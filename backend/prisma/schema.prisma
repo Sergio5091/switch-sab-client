@@ -1,0 +1,203 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+}
+
+enum Role {
+  CLIENT
+  GERANT
+  ADMIN
+}
+
+enum StatutSession {
+  ACTIVE
+  ARRETEE
+  TERMINEE
+}
+
+enum StatutPoste {
+  LIBRE
+  OCCUPE
+}
+
+enum TypeTransaction {
+  RECHARGE_GERANT
+  RECHARGE_CLIENT
+  RECHARGE_COUPON
+  SESSION
+  BONUS
+}
+
+model Salle {
+  id           Int      @id @default(autoincrement())
+  nom          String
+  pays         String
+  ville        String
+  quartier     String
+  telephone    String
+  switchType   String   @default("WIFI")
+  switchConfig String?
+  createdAt    DateTime @default(now())
+
+  users      User[]
+  categories Categorie[]
+  promos     Promo[]
+}
+
+model User {
+  id           Int      @id @default(autoincrement())
+  pseudo       String   @unique
+  telephone    String   @unique
+  motDePasse   String
+  role         Role     @default(CLIENT)
+  estEnfant    Boolean  @default(false)
+  codeParental String?
+  telUrgence   String?
+  salleId      Int?
+  createdAt    DateTime @default(now())
+
+  salle          Salle?        @relation(fields: [salleId], references: [id])
+  sessions       Session[]     @relation("ClientSessions")
+  sessionsGerant Session[]     @relation("GerantSessions")
+  credits        Credit[]
+  transactions   Transaction[]
+  bonus          Bonus?
+  promoCode      PromoCode?
+}
+
+model Categorie {
+  id      Int    @id @default(autoincrement())
+  nom     String
+  salleId Int
+
+  salle   Salle   @relation(fields: [salleId], references: [id])
+  durees  Duree[]
+  postes  Poste[]
+  credits Credit[]
+}
+
+model Duree {
+  id          Int    @id @default(autoincrement())
+  libelle     String
+  secondes    Int
+  prix        Float
+  categorieId Int
+
+  categorie Categorie @relation(fields: [categorieId], references: [id])
+  sessions  Session[]
+}
+
+model Poste {
+  id          Int         @id @default(autoincrement())
+  nom         String
+  image       String?
+  statut      StatutPoste @default(LIBRE)
+  categorieId Int
+
+  categorie Categorie @relation(fields: [categorieId], references: [id])
+  sessions  Session[]
+}
+
+model Session {
+  id           Int           @id @default(autoincrement())
+  clientId     Int
+  gerantId     Int
+  posteId      Int
+  dureeId      Int
+  debut        DateTime      @default(now())
+  fin          DateTime?
+  tempsRestant Int
+  statut       StatutSession @default(ACTIVE)
+  estBonus     Boolean       @default(false)
+  createdAt    DateTime      @default(now())
+
+  client User  @relation("ClientSessions", fields: [clientId], references: [id])
+  gerant User  @relation("GerantSessions", fields: [gerantId], references: [id])
+  poste  Poste @relation(fields: [posteId], references: [id])
+  duree  Duree @relation(fields: [dureeId], references: [id])
+}
+
+model Credit {
+  id          Int @id @default(autoincrement())
+  clientId    Int
+  categorieId Int
+  solde       Int @default(0)
+
+  client    User      @relation(fields: [clientId], references: [id])
+  categorie Categorie @relation(fields: [categorieId], references: [id])
+
+  @@unique([clientId, categorieId])
+}
+
+model Transaction {
+  id       Int             @id @default(autoincrement())
+  clientId Int
+  montant  Float
+  type     TypeTransaction
+  date     DateTime        @default(now())
+  gerantId Int?
+
+  client User @relation(fields: [clientId], references: [id])
+}
+
+model Coupon {
+  id        Int      @id @default(autoincrement())
+  code      String   @unique
+  valeur    Float
+  utilise   Boolean  @default(false)
+  createdAt DateTime @default(now())
+}
+
+model Licence {
+  id          Int      @id @default(autoincrement())
+  code        String   @unique
+  codeMachine String
+  debut       DateTime @default(now())
+  fin         DateTime
+  actif       Boolean  @default(true)
+  createdAt   DateTime @default(now())
+}
+
+model Bonus {
+  id               Int      @id @default(autoincrement())
+  clientId         Int      @unique
+  solde            Int      @default(0)
+  disponible       Boolean  @default(false)
+  derniereActivite DateTime @default(now())
+
+  client User @relation(fields: [clientId], references: [id])
+}
+
+model ConfigBonus {
+  id              Int   @id @default(autoincrement())
+  ratioSecondes   Int
+  seuilDeblocage  Int
+  validitejours   Int   @default(30)
+  reductionInvite Float @default(0)
+  bonusParrain    Float @default(0)
+}
+
+model PromoCode {
+  id           Int      @id @default(autoincrement())
+  clientId     Int      @unique
+  code         String   @unique
+  utilisations Int      @default(0)
+  createdAt    DateTime @default(now())
+
+  client User @relation(fields: [clientId], references: [id])
+}
+
+model Promo {
+  id        Int      @id @default(autoincrement())
+  titre     String
+  message   String?
+  image     String?
+  salleId   Int
+  createdAt DateTime @default(now())
+  envoyee   Boolean  @default(false)
+
+  salle Salle @relation(fields: [salleId], references: [id])
+}
