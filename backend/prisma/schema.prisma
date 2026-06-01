@@ -6,6 +6,10 @@ datasource db {
   provider = "postgresql"
 }
 
+// ─────────────────────────────────────────────
+// Enums
+// ─────────────────────────────────────────────
+
 enum Role {
   CLIENT
   GERANT
@@ -31,6 +35,10 @@ enum TypeTransaction {
   BONUS
 }
 
+// ─────────────────────────────────────────────
+// Modèles
+// ─────────────────────────────────────────────
+
 model Salle {
   id           Int      @id @default(autoincrement())
   nom          String
@@ -38,25 +46,33 @@ model Salle {
   ville        String
   quartier     String
   telephone    String
-  switchType   String   @default("WIFI")
-  switchConfig String?
+  disabled     Boolean  @default(false)
+  switchType   String   @default("WIFI") // "USB" ou "WIFI"
+  switchConfig String?                   // IP ou port COM
   createdAt    DateTime @default(now())
 
-  users      User[]
-  categories Categorie[]
-  promos     Promo[]
+  users       User[]
+  categories  Categorie[]
+  promos      Promo[]
+  licences    LicenceLocale[]
+  configBonus ConfigBonus?
+  coupons     Coupon[]
 }
 
 model User {
   id           Int      @id @default(autoincrement())
   pseudo       String   @unique
+  email        String?  @unique
+  nom          String?
+  prenom       String?
   telephone    String   @unique
   motDePasse   String
   role         Role     @default(CLIENT)
   estEnfant    Boolean  @default(false)
   codeParental String?
-  telUrgence   String?
+  telUrgence   String?  // pour les gérants
   salleId      Int?
+  active       Boolean  @default(true)
   createdAt    DateTime @default(now())
 
   salle          Salle?        @relation(fields: [salleId], references: [id])
@@ -70,10 +86,10 @@ model User {
 
 model Categorie {
   id      Int    @id @default(autoincrement())
-  nom     String
+  nom     String // "PS4", "PS5", "XBOX"
   salleId Int
 
-  salle   Salle   @relation(fields: [salleId], references: [id])
+  salle   Salle    @relation(fields: [salleId], references: [id])
   durees  Duree[]
   postes  Poste[]
   credits Credit[]
@@ -81,8 +97,8 @@ model Categorie {
 
 model Duree {
   id          Int    @id @default(autoincrement())
-  libelle     String
-  secondes    Int
+  libelle     String // "30min", "1H", "2H"
+  secondes    Int    // durée en secondes
   prix        Float
   categorieId Int
 
@@ -93,7 +109,7 @@ model Duree {
 model Poste {
   id          Int         @id @default(autoincrement())
   nom         String
-  image       String?
+  image       String?     // URL image personnalisée
   statut      StatutPoste @default(LIBRE)
   categorieId Int
 
@@ -109,7 +125,7 @@ model Session {
   dureeId      Int
   debut        DateTime      @default(now())
   fin          DateTime?
-  tempsRestant Int
+  tempsRestant Int           // en secondes
   statut       StatutSession @default(ACTIVE)
   estBonus     Boolean       @default(false)
   createdAt    DateTime      @default(now())
@@ -124,7 +140,7 @@ model Credit {
   id          Int @id @default(autoincrement())
   clientId    Int
   categorieId Int
-  solde       Int @default(0)
+  solde       Int @default(0) // en secondes
 
   client    User      @relation(fields: [clientId], references: [id])
   categorie Categorie @relation(fields: [categorieId], references: [id])
@@ -145,26 +161,19 @@ model Transaction {
 
 model Coupon {
   id        Int      @id @default(autoincrement())
-  code      String   @unique
+  code      String   @unique // alphanumérique sans O ni 0, format XXXX-XXXX
   valeur    Float
   utilise   Boolean  @default(false)
+  salleId   Int
   createdAt DateTime @default(now())
-}
 
-model Licence {
-  id          Int      @id @default(autoincrement())
-  code        String   @unique
-  codeMachine String
-  debut       DateTime @default(now())
-  fin         DateTime
-  actif       Boolean  @default(true)
-  createdAt   DateTime @default(now())
+  salle Salle @relation(fields: [salleId], references: [id])
 }
 
 model Bonus {
   id               Int      @id @default(autoincrement())
   clientId         Int      @unique
-  solde            Int      @default(0)
+  solde            Int      @default(0)     // en secondes
   disponible       Boolean  @default(false)
   derniereActivite DateTime @default(now())
 
@@ -173,11 +182,14 @@ model Bonus {
 
 model ConfigBonus {
   id              Int   @id @default(autoincrement())
-  ratioSecondes   Int
-  seuilDeblocage  Int
+  salleId         Int   @unique              // une config par salle
+  ratioSecondes   Int                        // secondes bonus / heure jouée
+  seuilDeblocage  Int                        // secondes pour débloquer
   validitejours   Int   @default(30)
-  reductionInvite Float @default(0)
-  bonusParrain    Float @default(0)
+  reductionInvite Float @default(0)          // % réduction client invité
+  bonusParrain    Float @default(0)          // % bonus parrain
+
+  salle Salle @relation(fields: [salleId], references: [id])
 }
 
 model PromoCode {
@@ -198,6 +210,22 @@ model Promo {
   salleId   Int
   createdAt DateTime @default(now())
   envoyee   Boolean  @default(false)
+
+  salle Salle @relation(fields: [salleId], references: [id])
+}
+
+// Licence locale — copie de la licence générée par le Projet 1
+// Vérifiée hors-ligne avec la clé publique RSA
+model LicenceLocale {
+  id        Int      @id @default(autoincrement())
+  licenceId String   @unique
+  salleId   Int
+  machineId String
+  issuedAt  DateTime
+  expiresAt DateTime
+  status    String   @default("ACTIVE")
+  signature String
+  createdAt DateTime @default(now())
 
   salle Salle @relation(fields: [salleId], references: [id])
 }
