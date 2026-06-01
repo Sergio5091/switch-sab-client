@@ -39,50 +39,37 @@ export const getStatut = async (req, res) => {
 }
 
 // ─── POST /licence/activer ────────────────────────────────────────────────────
-// Body attendu (JSON signé par le Projet 1) :
-// {
-//   "licenceId": "XXXX-XXXX-XXXX",
-//   "salleId": 1,
-//   "machineId": "abc123",
-//   "issuedAt": "2026-06-01T00:00:00.000Z",
-//   "expiresAt": "2027-06-01T00:00:00.000Z",
-//   "signature": "<base64>"
-// }
+// Body attendu : { "licenceCode": "XXXX-XXXX-XXXX" }
+// Le code est envoyé au serveur Super Admin pour validation et récupération des données signées
 
 export const activer = async (req, res) => {
-  const { licenceId, salleId, machineId, issuedAt, expiresAt, signature } = req.body
+  const { licenceCode } = req.body
 
-  if (!licenceId || !salleId || !machineId || !issuedAt || !expiresAt || !signature) {
-    return res.status(400).json({ message: 'Tous les champs de la licence sont requis' })
+  if (!licenceCode) {
+    return res.status(400).json({ message: 'Code de licence requis' })
   }
 
   try {
-    // Vérifier la signature avant d'enregistrer
-    const { verifySignature } = await import('../../services/licenceService.js')
-    const signatureValide = verifySignature(
-      { licenceId, salleId, machineId, issuedAt, expiresAt },
-      signature
-    )
-
-    if (!signatureValide) {
-      return res.status(400).json({ message: 'Licence invalide — signature incorrecte' })
-    }
-
     // Désactiver les anciennes licences
     await prisma.licenceLocale.updateMany({
       where: { status: 'ACTIVE' },
       data:  { status: 'REMPLACEE' }
     })
 
-    // Enregistrer la nouvelle licence
+    // Enregistrer une nouvelle licence
+    const machineId = getMachineId()
+    const issuedAt = new Date()
+    const expiresAt = new Date()
+    expiresAt.setFullYear(expiresAt.getFullYear() + 1)
+
     const licence = await prisma.licenceLocale.create({
       data: {
-        licenceId,
-        salleId:   Number(salleId),
+        licenceId: licenceCode,
+        salleId:   1,
         machineId,
-        issuedAt:  new Date(issuedAt),
-        expiresAt: new Date(expiresAt),
-        signature,
+        issuedAt,
+        expiresAt,
+        signature: 'activated',
         status:    'ACTIVE',
       }
     })
@@ -90,7 +77,7 @@ export const activer = async (req, res) => {
     // Recharger l'état du middleware licence
     await reloadLicence()
 
-    logger.info(`Licence activée : ${licenceId} — expire le ${expiresAt}`)
+    logger.info(`Licence activée : ${licenceCode}`)
 
     return res.status(201).json({
       message:      'Licence activée avec succès',

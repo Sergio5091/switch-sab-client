@@ -6,6 +6,7 @@ import { AppProvider, useApp } from "@/contexts/AppContext";
 import { ThemeProvider } from "@/contexts/ThemeContext";
 
 import LoginPage from "@/pages/login";
+import LicencePage from "@/pages/admin/licence";
 import NotFound from "@/pages/not-found";
 
 // import SuperAdminDashboard from "@/pages/superadmin/dashboard";
@@ -41,8 +42,14 @@ import ClientLeaderboard from "@/pages/client/leaderboard";
 const queryClient = new QueryClient();
 
 function RoleRedirect() {
-  const { currentUser } = useApp();
+  const { currentUser, licenceStatut } = useApp();
   if (!currentUser) return <Redirect to="/login" />;
+  
+  // Si la licence est invalide ou expirée, rediriger vers la page de licence
+  if (licenceStatut?.statut !== "ACTIVE") {
+    return <Redirect to="/admin/licence" />;
+  }
+  
   switch (currentUser.role) {
     case "superadmin": return <Redirect to="/superadmin/dashboard" />;
     case "admin": return <Redirect to="/admin/dashboard" />;
@@ -59,9 +66,21 @@ function ProtectedRoute({
   component: React.ComponentType;
   roles: string[];
 }) {
-  const { currentUser } = useApp();
+  const { currentUser, licenceStatut } = useApp();
   if (!currentUser) return <Redirect to="/login" />;
   if (!roles.includes(currentUser.role)) return <RoleRedirect />;
+  
+  // Pour les routes admin, vérifier la licence
+  if (roles.includes("admin") && licenceStatut?.statut !== "ACTIVE") {
+    return <Redirect to="/admin/licence" />;
+  }
+  
+  return <Component />;
+}
+
+function LicenseRequiredRoute({ component: Component }: { component: React.ComponentType }) {
+  const { currentUser } = useApp();
+  if (!currentUser) return <Redirect to="/login" />;
   return <Component />;
 }
 
@@ -77,6 +96,11 @@ function Router() {
     <Switch>
       <Route path="/" component={RoleRedirect} />
       <Route path="/login" component={LoginGuard} />
+
+      {/* Licence activation route - accessible seulement si connecté */}
+      <Route path="/admin/licence">
+        {() => <LicenseRequiredRoute component={LicencePage} />}
+      </Route>
 
       {/* Super Admin
       <Route path="/superadmin/dashboard">

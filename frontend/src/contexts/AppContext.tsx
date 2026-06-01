@@ -3,6 +3,15 @@ import { axiosInstance } from "@/lib/axios";
 
 export type Role = "superadmin" | "admin" | "gerant" | "client";
 
+export interface LicenceStatut {
+  statut: "AUCUNE" | "ACTIVE" | "INVALIDE";
+  message: string;
+  machineId: string;
+  joursRestants: number;
+  licenceId?: string;
+  expiresAt?: string;
+}
+
 export interface Utilisateur {
   id: number;
   nom: string;
@@ -131,8 +140,11 @@ export interface PromoConfig {
 
 interface AppContextType {
   currentUser: Utilisateur | null;
-  login: (email: string, password: string) => boolean;
+  login: (email: string, password: string) => Promise<{ success: boolean; licenceRequired: boolean }>;
   logout: () => void;
+  licenceStatut: LicenceStatut | null;
+  checkLicenceStatut: () => Promise<LicenceStatut | null>;
+  activerLicence: (licenceCode: string) => Promise<boolean>;
 
   salles: Salle[];
   addSalle: (s: Omit<Salle, "id">) => void;
@@ -387,6 +399,7 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
   const [promotions, setPromotions] = useState<Promotion[]>(MOCK_PROMOTIONS);
   const [bonusConfigs, setBonusConfigs] = useState<BonusConfig[]>(MOCK_BONUS_CONFIGS);
   const [promoConfigs, setPromoConfigs] = useState<PromoConfig[]>(MOCK_PROMO_CONFIGS);
+  const [licenceStatut, setLicenceStatut] = useState<LicenceStatut | null>(null);
 
   useEffect(() => {
     const interval = setInterval(() => {
@@ -404,9 +417,30 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
     return () => clearInterval(interval);
   }, []);
 
-  const login = useCallback(async (email: string, password: string): Promise<boolean> => {
+  const checkLicenceStatut = useCallback(async (): Promise<LicenceStatut | null> => {
     try {
-      // Appel au backend
+      const response = await axiosInstance.get<LicenceStatut>("/licence/statut");
+      setLicenceStatut(response.data);
+      return response.data;
+    } catch (error) {
+      console.error("Erreur vérification licence:", error);
+      return null;
+    }
+  }, []);
+
+  const activerLicence = useCallback(async (licenceCode: string): Promise<boolean> => {
+    try {
+      await axiosInstance.post("/licence/activer", { licenceCode });
+      const statut = await checkLicenceStatut();
+      return statut?.statut === "ACTIVE";
+    } catch (error) {
+      console.error("Erreur activation licence:", error);
+      return false;
+    }
+  }, [checkLicenceStatut]);
+
+  const login = useCallback(async (email: string, password: string): Promise<{ success: boolean; licenceRequired: boolean }> => {
+    try {
       const response = await axiosInstance.post('/auth/login', {
         email,
         motDePasse: password
@@ -417,14 +451,20 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
         setCurrentUser(user);
         localStorage.setItem("switch_sab_user", JSON.stringify(user));
         localStorage.setItem("authToken", response.data.token);
-        return true;
+        
+        const statut = await checkLicenceStatut();
+        const licenceRequired = statut?.statut !== "ACTIVE";
+        
+        return { success: true, licenceRequired };
       }
-      return false;
-    } catch (error) {
+      throw new Error('Réponse invalide du serveur');
+    } catch (error: any) {
       console.error('Login error:', error);
-      return false;
+      const message = error.response?.data?.message || error.message || 'Erreur de connexion. Vérifiez que le serveur est démarré.';
+      const err = new Error(message);
+      throw err;
     }
-  }, []);
+  }, [checkLicenceStatut]);
 
   const logout = useCallback(() => {
     setCurrentUser(null);
@@ -512,6 +552,7 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
   return (
     <AppContext.Provider value={{
       currentUser, login, logout,
+      licenceStatut, checkLicenceStatut, activerLicence,
       salles, addSalle, updateSalle, deleteSalle,
       utilisateurs, addUtilisateur, updateUtilisateur, deleteUtilisateur,
       categories, addCategorie, updateCategorie, deleteCategorie,

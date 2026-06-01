@@ -24,7 +24,6 @@ const DEMO_ACCOUNTS = [
   { label: "Client", email: "client@switch.bj", color: "text-purple-500 dark:text-purple-400" },
 ];
 
-// Floating particle dot
 function Particle({ style, delay }: { style: React.CSSProperties; delay: number }) {
   return (
     <div
@@ -34,11 +33,9 @@ function Particle({ style, delay }: { style: React.CSSProperties; delay: number 
   );
 }
 
-// Animated gaming hero panel
 function HeroPanel() {
   return (
     <div className="relative w-full h-full flex flex-col items-center justify-center overflow-hidden bg-gradient-to-br from-slate-900 via-[#0f1729] to-slate-900 select-none">
-      {/* Grid background */}
       <div
         className="absolute inset-0 opacity-10"
         style={{
@@ -46,8 +43,6 @@ function HeroPanel() {
           backgroundSize: "48px 48px",
         }}
       />
-
-      {/* Scanline effect */}
       <div className="absolute inset-0 overflow-hidden pointer-events-none">
         <div
           className="absolute left-0 right-0 h-16 animate-scanline"
@@ -56,14 +51,10 @@ function HeroPanel() {
           }}
         />
       </div>
-
-      {/* Outer pulsing rings */}
       <div className="absolute inset-0 flex items-center justify-center pointer-events-none">
         <div className="w-[380px] h-[380px] rounded-full border border-primary/10 animate-pulse-ring2" />
         <div className="absolute w-[260px] h-[260px] rounded-full border border-primary/20 animate-pulse-ring" />
       </div>
-
-      {/* Orbiting dots */}
       <div className="absolute inset-0 flex items-center justify-center pointer-events-none">
         <div className="w-1 h-1 animate-orbit">
           <div className="w-3 h-3 rounded-full bg-primary shadow-lg shadow-primary/50" />
@@ -75,8 +66,6 @@ function HeroPanel() {
           <div className="w-2.5 h-2.5 rounded-full bg-orange-300 shadow-lg shadow-orange-300/50" />
         </div>
       </div>
-
-      {/* Floating particles */}
       {[
         { top: "18%", left: "20%", delay: 0 },
         { top: "25%", left: "75%", delay: 0.8 },
@@ -90,41 +79,29 @@ function HeroPanel() {
       ].map((p, i) => (
         <Particle key={i} style={{ top: p.top, left: p.left }} delay={p.delay} />
       ))}
-
-      {/* Main controller SVG */}
       <div className="relative z-10 flex flex-col items-center gap-8">
         <div className="animate-float">
           <div className="relative">
-            {/* Glow */}
             <div className="absolute inset-0 blur-3xl bg-primary/30 rounded-full scale-150" />
-            {/* Controller SVG */}
             <svg width="160" height="120" viewBox="0 0 160 120" fill="none" xmlns="http://www.w3.org/2000/svg" className="relative z-10 drop-shadow-[0_0_20px_rgba(249,115,22,0.5)]">
-              {/* Body */}
               <path d="M30 45 C15 45 8 55 8 70 C8 90 20 108 38 108 C50 108 55 100 80 100 C105 100 110 108 122 108 C140 108 152 90 152 70 C152 55 145 45 130 45 L110 42 C100 35 90 30 80 30 C70 30 60 35 50 42 Z" fill="rgba(249,115,22,0.15)" stroke="rgba(249,115,22,0.6)" strokeWidth="2" />
-              {/* D-pad */}
               <rect x="30" y="58" width="8" height="22" rx="2" fill="rgba(249,115,22,0.7)" />
               <rect x="22" y="66" width="24" height="8" rx="2" fill="rgba(249,115,22,0.7)" />
-              {/* Action buttons */}
               <circle cx="118" cy="62" r="5" fill="rgba(59,130,246,0.7)" />
               <circle cx="130" cy="70" r="5" fill="rgba(249,115,22,0.7)" />
               <circle cx="118" cy="78" r="5" fill="rgba(34,197,94,0.7)" />
               <circle cx="106" cy="70" r="5" fill="rgba(239,68,68,0.7)" />
-              {/* Sticks */}
               <circle cx="50" cy="82" r="10" fill="rgba(255,255,255,0.1)" stroke="rgba(249,115,22,0.4)" strokeWidth="1.5" />
               <circle cx="50" cy="82" r="5" fill="rgba(249,115,22,0.4)" />
               <circle cx="110" cy="52" r="10" fill="rgba(255,255,255,0.1)" stroke="rgba(249,115,22,0.4)" strokeWidth="1.5" />
               <circle cx="110" cy="52" r="5" fill="rgba(249,115,22,0.4)" />
-              {/* Center buttons */}
               <rect x="70" y="64" width="8" height="5" rx="2.5" fill="rgba(255,255,255,0.3)" />
               <rect x="82" y="64" width="8" height="5" rx="2.5" fill="rgba(255,255,255,0.3)" />
-              {/* Shoulder bumpers */}
               <path d="M38 44 L55 40 L55 46 L38 46 Z" fill="rgba(249,115,22,0.4)" stroke="rgba(249,115,22,0.6)" strokeWidth="1" />
               <path d="M122 44 L105 40 L105 46 L122 46 Z" fill="rgba(249,115,22,0.4)" stroke="rgba(249,115,22,0.6)" strokeWidth="1" />
             </svg>
           </div>
         </div>
-
-        {/* Brand text */}
         <div className="text-center space-y-2">
           <div className="text-4xl font-black text-white tracking-wider animate-glitch">
             SWITCH <span className="text-primary">SAB</span>
@@ -137,8 +114,6 @@ function HeroPanel() {
             <span className="text-xs text-green-400 font-medium">Système actif</span>
           </div>
         </div>
-
-        {/* Stats */}
         <div className="flex items-center gap-6 mt-2">
           {[
             { label: "Salles", value: "3" },
@@ -152,8 +127,6 @@ function HeroPanel() {
           ))}
         </div>
       </div>
-
-      {/* Corner decorations */}
       <div className="absolute top-6 left-6 w-12 h-12 border-t-2 border-l-2 border-primary/30 rounded-tl-lg" />
       <div className="absolute top-6 right-6 w-12 h-12 border-t-2 border-r-2 border-primary/30 rounded-tr-lg" />
       <div className="absolute bottom-6 left-6 w-12 h-12 border-b-2 border-l-2 border-primary/30 rounded-bl-lg" />
@@ -187,18 +160,18 @@ export default function LoginPage() {
     setError("");
     setLoading(true);
     login(values.email, values.password)
-      .then(ok => {
+      .then((result) => {
         setLoading(false);
-        if (!ok) {
-          setError("Email ou mot de passe incorrect");
-          return;
+        if (result.success && result.licenceRequired) {
+          setLocation("/admin/licence");
+        } else if (result.success) {
+          toast({ title: "Connexion réussie" });
         }
-        toast({ title: "Connexion réussie" });
       })
       .catch((err) => {
         setLoading(false);
-        console.error(err);
-        setError("Erreur de connexion. Vérifiez que le serveur est démarré.");
+        const errorMessage = err.message || "Erreur de connexion. Vérifiez que le serveur est démarré.";
+        setError(errorMessage);
       });
   }
 
@@ -210,16 +183,11 @@ export default function LoginPage() {
 
   return (
     <div className="min-h-screen flex bg-background">
-      {/* Left hero panel — desktop only */}
       <div className="hidden lg:flex lg:w-1/2 xl:w-3/5 relative">
         <HeroPanel />
       </div>
-
-      {/* Right form panel */}
       <div className="flex-1 flex flex-col min-h-screen bg-background">
-        {/* Top bar */}
         <div className="flex items-center justify-between px-6 py-4">
-          {/* Mobile logo */}
           <div className="flex items-center gap-2 lg:opacity-0">
             <div className="w-8 h-8 rounded-lg bg-primary flex items-center justify-center">
               <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="white" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
@@ -233,8 +201,6 @@ export default function LoginPage() {
             </div>
             <span className="font-bold text-sm text-foreground">SWITCH SAB</span>
           </div>
-
-          {/* Theme toggle */}
           <button
             onClick={toggleTheme}
             className="w-9 h-9 rounded-xl border border-border bg-card flex items-center justify-center text-muted-foreground hover:text-foreground hover:bg-muted transition-all"
@@ -244,17 +210,12 @@ export default function LoginPage() {
             {theme === "dark" ? <Sun size={16} /> : <Moon size={16} />}
           </button>
         </div>
-
-        {/* Form content */}
         <div className="flex-1 flex flex-col items-center justify-center px-6 py-8">
           <div className="w-full max-w-sm space-y-7">
-            {/* Header */}
             <div className="space-y-1.5">
               <h1 className="text-2xl font-bold text-foreground">Connexion</h1>
               <p className="text-sm text-muted-foreground">Accédez à votre espace de gestion</p>
             </div>
-
-            {/* Form */}
             <Form {...form}>
               <form onSubmit={form.handleSubmit(onSubmit)} className="space-y-4">
                 <FormField control={form.control} name="email" render={({ field }) => (
@@ -275,7 +236,6 @@ export default function LoginPage() {
                     <FormMessage />
                   </FormItem>
                 )} />
-
                 <FormField control={form.control} name="password" render={({ field }) => (
                   <FormItem>
                     <FormLabel className="text-foreground text-sm">Mot de passe</FormLabel>
@@ -294,14 +254,12 @@ export default function LoginPage() {
                     <FormMessage />
                   </FormItem>
                 )} />
-
                 {error && (
                   <div className="flex items-center gap-2 bg-destructive/10 border border-destructive/20 text-destructive rounded-xl px-3 py-2.5 text-sm">
                     <AlertCircle size={15} className="flex-shrink-0" />
                     {error}
                   </div>
                 )}
-
                 <Button
                   type="submit"
                   className="w-full h-11 font-semibold text-base gap-2"
@@ -320,15 +278,11 @@ export default function LoginPage() {
                 </Button>
               </form>
             </Form>
-
-            {/* Divider */}
             <div className="flex items-center gap-3">
               <div className="flex-1 h-px bg-border" />
               <span className="text-xs text-muted-foreground">Comptes de démonstration</span>
               <div className="flex-1 h-px bg-border" />
             </div>
-
-            {/* Demo accounts */}
             <div className="grid grid-cols-2 gap-2">
               {DEMO_ACCOUNTS.map(a => (
                 <button
@@ -344,14 +298,11 @@ export default function LoginPage() {
                 </button>
               ))}
             </div>
-
             <p className="text-center text-xs text-muted-foreground">
               Mot de passe universel : <span className="font-mono font-semibold text-foreground">admin123</span>
             </p>
           </div>
         </div>
-
-        {/* Footer */}
         <div className="text-center px-6 py-4 text-xs text-muted-foreground">
           Support : <span className="text-foreground">+229 0197691879</span>
         </div>

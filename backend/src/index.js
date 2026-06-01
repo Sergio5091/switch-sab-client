@@ -31,11 +31,11 @@ app.get('/', (req, res) => {
   res.json({ message: 'Switch SAB App — API opérationnelle ✅' })
 })
 
-app.use('/auth',     authRoutes)
-app.use('/admin',    adminRoutes)
-app.use('/gerant',   gerantRoutes)
-app.use('/client',   clientRoutes)
-app.use('/rapports', rapportsRoutes)
-app.use('/licence',  licenceRoutes)
+app.use('/api/auth',     authRoutes)
+app.use('/api/admin',    adminRoutes)
+app.use('/api/gerant',   gerantRoutes)
+app.use('/api/client',   clientRoutes)
+app.use('/api/rapports', rapportsRoutes)
+app.use('/api/licence',  licenceRoutes)
 
 export default app
