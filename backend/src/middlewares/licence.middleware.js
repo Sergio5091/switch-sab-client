@@ -1,13 +1,23 @@
 import prisma from '../services/prismaClient.js'
+import { verifierLicence } from '../services/licenceService.js'
 import logger from '../config/logger.js'
 
 let licenceValide = false
 
-/**
- * Vérifie la licence au démarrage du serveur.
- * Appelé une fois dans index.js avant de monter les routes.
- */
+// ─── Vérification au démarrage ────────────────────────────────────────────────
+
 export const checkLicenceAtStartup = async () => {
+  await _verifier()
+}
+
+/**
+ * Recharge l'état de la licence (appelé après POST /licence/activer).
+ */
+export const reloadLicence = async () => {
+  await _verifier()
+}
+
+const _verifier = async () => {
   try {
     const licence = await prisma.licenceLocale.findFirst({
       where: { status: 'ACTIVE' }
@@ -19,36 +29,43 @@ export const checkLicenceAtStartup = async () => {
       return
     }
 
-    const expiree = new Date(licence.expiresAt) < new Date()
-    if (expiree) {
-      logger.warn('Licence expirée.')
+    const resultat = verifierLicence(licence)
+
+    if (!resultat.valide) {
+      logger.warn(`Licence invalide : ${resultat.raison}`)
       licenceValide = false
       return
     }
 
-    // TODO Phase 1 — vérification signature RSA
-    // const valide = verifyLicencePayload(payload, licence.signature)
-
     licenceValide = true
-    logger.info(`Licence valide jusqu'au ${licence.expiresAt.toISOString().split('T')[0]}`)
+    logger.info(`Licence valide — ${resultat.joursRestants} jour(s) restant(s)`)
   } catch (err) {
     logger.error('Erreur vérification licence :', err.message)
     licenceValide = false
   }
 }
 
+// ─── Middleware Express ───────────────────────────────────────────────────────
+
 /**
- * Middleware Express — bloque les routes si la licence est invalide.
- * Ne bloque PAS /auth/login et /licence/activer.
+ * Bloque toutes les routes si la licence est invalide.
+ * Routes exemptées : /auth/login, /auth/register, /licence/*
  */
 export const requireLicence = (req, res, next) => {
-  const exemptees = ['/auth/login', '/auth/register', '/licence/activer', '/licence/statut']
-  if (exemptees.includes(req.path) || exemptees.includes(req.originalUrl.split('?')[0])) return next()
+  const url = req.originalUrl.split('?')[0]
+
+  const exemptee =
+    url === '/auth/login'      ||
+    url === '/auth/register'   ||
+    url.startsWith('/licence')
+
+  if (exemptee) return next()
 
   if (!licenceValide) {
     return res.status(403).json({
       message: 'Licence invalide ou expirée. Contactez votre administrateur.'
     })
   }
+
   next()
 }
