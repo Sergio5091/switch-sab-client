@@ -63,10 +63,10 @@
 
 ### 1.2 — Licence hors-ligne (Alessio)
 - [ ] Copier `public-key.pem` depuis Projet 1 → `keys/public-key.pem`
-- [ ] Implémenter `verifyLicencePayload(payload, signature)` avec RSA
-- [ ] `GET /licence/statut` → jours restants + statut
-- [ ] `POST /licence/activer` → installer une nouvelle licence (JSON signé)
-- [ ] Finaliser `licence.middleware.js` avec vérification RSA réelle
+- [x] Implémenter `verifyLicencePayload(payload, signature)` avec RSA
+- [x] `GET /licence/statut` → jours restants + statut
+- [x] `POST /licence/activer` → installer une nouvelle licence (JSON signé)
+- [x] Finaliser `licence.middleware.js` avec vérification RSA réelle
 
 ### 1.3 — Interface Auth (Mathieu)
 - [ ] Page de login unique (réutilisée pour tous les rôles)
@@ -82,47 +82,47 @@
 > Backend terminé et testé avant de commencer le frontend.
 
 ### 2.1 — Catégories (Alessio)
-- [ ] `POST /admin/categories`
-- [ ] `GET /admin/categories`
-- [ ] `PATCH /admin/categories/:id`
-- [ ] `DELETE /admin/categories/:id`
+- [x] `POST /admin/categories`
+- [x] `GET /admin/categories`
+- [x] `PATCH /admin/categories/:id`
+- [x] `DELETE /admin/categories/:id`
 
 ### 2.2 — Durées et prix (Alessio)
-- [ ] `POST /admin/categories/:id/durees`
-- [ ] `GET /admin/categories/:id/durees`
-- [ ] `PATCH /admin/durees/:id`
-- [ ] `DELETE /admin/durees/:id`
+- [x] `POST /admin/categories/:id/durees`
+- [x] `GET /admin/categories/:id/durees`
+- [x] `PATCH /admin/durees/:id`
+- [x] `DELETE /admin/durees/:id`
 
 ### 2.3 — Postes (Alessio)
-- [ ] `POST /admin/postes`
-- [ ] `GET /admin/postes`
-- [ ] `PATCH /admin/postes/:id`
-- [ ] `DELETE /admin/postes/:id`
+- [x] `POST /admin/postes`
+- [x] `GET /admin/postes`
+- [x] `PATCH /admin/postes/:id`
+- [x] `DELETE /admin/postes/:id`
 
 ### 2.4 — Gérants (Alessio)
-- [ ] `POST /admin/gerants` → créer compte gérant
-- [ ] `GET /admin/gerants`
-- [ ] `PATCH /admin/gerants/:id` → modifier / désactiver
+- [x] `POST /admin/gerants` → créer compte gérant
+- [x] `GET /admin/gerants`
+- [x] `PATCH /admin/gerants/:id` → modifier / désactiver
 
 ### 2.5 — Configuration bonus (Alessio)
-- [ ] `POST /admin/bonus/config`
-- [ ] `GET /admin/bonus/config`
-- [ ] `PATCH /admin/bonus/config`
+- [x] `POST /admin/bonus/config`
+- [x] `GET /admin/bonus/config`
+- [x] `PATCH /admin/bonus/config`
 
 ### 2.6 — Configuration codes promo (Alessio)
-- [ ] `GET /admin/promo/config`
-- [ ] `PATCH /admin/promo/config`
+- [x] `GET /admin/promo/config`
+- [x] `PATCH /admin/promo/config`
 
 ### 2.7 — Coupons (Alessio)
-- [ ] `POST /admin/coupons/generer` → `{ nombre, valeur }` → génère N coupons
-- [ ] Charset sans O ni 0 : `ABCDEFGHIJKLMNPQRSTUVWXYZ123456789`, format `XXXX-XXXX`
-- [ ] `GET /admin/coupons` → `?statut=actif|utilise`
+- [x] `POST /admin/coupons/generer` → `{ nombre, valeur }` → génère N coupons
+- [x] Charset sans O ni 0 : `ABCDEFGHIJKLMNPQRSTUVWXYZ123456789`, format `XXXX-XXXX`
+- [x] `GET /admin/coupons` → `?statut=actif|utilise`
 - [ ] `GET /admin/coupons/pdf` → PDF A4, 40 coupons, 3cm×2cm (nom salle + valeur + quartier)
 
 ### 2.8 — Promotions (Alessio)
-- [ ] `POST /admin/promotions`
-- [ ] `GET /admin/promotions`
-- [ ] `POST /admin/promotions/:id/envoyer` → SMS/WhatsApp (Twilio — Phase 2.8)
+- [x] `POST /admin/promotions`
+- [x] `GET /admin/promotions`
+- [x] `POST /admin/promotions/:id/envoyer` → SMS/WhatsApp (Twilio — Phase 2.8)
 
 ### 2.9 — Interface Admin (Mathieu)
 - [ ] Dashboard : vue synthétique de la salle
