@@ -186,15 +186,20 @@ export default function LoginPage() {
   function onSubmit(values: FormValues) {
     setError("");
     setLoading(true);
-    setTimeout(() => {
-      const ok = login(values.email, values.password);
-      setLoading(false);
-      if (!ok) {
-        setError("Email ou mot de passe incorrect");
-        return;
-      }
-      toast({ title: "Connexion réussie" });
-    }, 400);
+    login(values.email, values.password)
+      .then(ok => {
+        setLoading(false);
+        if (!ok) {
+          setError("Email ou mot de passe incorrect");
+          return;
+        }
+        toast({ title: "Connexion réussie" });
+      })
+      .catch((err) => {
+        setLoading(false);
+        console.error(err);
+        setError("Erreur de connexion. Vérifiez que le serveur est démarré.");
+      });
   }
 
   function fillDemo(email: string) {

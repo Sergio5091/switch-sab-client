@@ -1,4 +1,5 @@
 import { createContext, useContext, useState, useEffect, useCallback } from "react";
+import { axiosInstance } from "@/lib/axios";
 
 export type Role = "superadmin" | "admin" | "gerant" | "client";
 
@@ -403,15 +404,27 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
     return () => clearInterval(interval);
   }, []);
 
-  const login = useCallback((email: string, password: string): boolean => {
-    const user = utilisateurs.find(u => u.email === email && u.password === password);
-    if (user) {
-      setCurrentUser(user);
-      localStorage.setItem("switch_sab_user", JSON.stringify(user));
-      return true;
+  const login = useCallback(async (email: string, password: string): Promise<boolean> => {
+    try {
+      // Appel au backend
+      const response = await axiosInstance.post('/auth/login', {
+        email,
+        motDePasse: password
+      });
+
+      if (response.data && response.data.token && response.data.user) {
+        const user = response.data.user;
+        setCurrentUser(user);
+        localStorage.setItem("switch_sab_user", JSON.stringify(user));
+        localStorage.setItem("authToken", response.data.token);
+        return true;
+      }
+      return false;
+    } catch (error) {
+      console.error('Login error:', error);
+      return false;
     }
-    return false;
-  }, [utilisateurs]);
+  }, []);
 
   const logout = useCallback(() => {
     setCurrentUser(null);
