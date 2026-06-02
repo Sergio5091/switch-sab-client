@@ -57,8 +57,8 @@ export const creerRecharge = async (req, res) => {
       })
     }
 
-    // Vérifier que le crédit existe
-    const credit = await prisma.credit.findFirst({
+    // Trouver ou créer le crédit pour cette catégorie
+    let credit = await prisma.credit.findFirst({
       where: {
         clientId: Number(clientId),
         categorieId: Number(categorieId)
@@ -66,8 +66,12 @@ export const creerRecharge = async (req, res) => {
     })
 
     if (!credit) {
-      return res.status(404).json({
-        message: 'Crédit client introuvable'
+      credit = await prisma.credit.create({
+        data: {
+          clientId: Number(clientId),
+          categorieId: Number(categorieId),
+          solde: 0
+        }
       })
     }
 
@@ -140,6 +144,69 @@ export const listerRechargesEnAttente = async (req, res) => {
     return res.status(500).json({
       message: 'Erreur serveur'
     })
+  }
+}
+
+// ─── GET /gerant/recharges → Historique complet des recharges ─────────────
+
+export const listerHistoriqueRecharges = async (req, res) => {
+  try {
+    const { clientId, date } = req.query
+
+    const where = {
+      type: { in: ['RECHARGE_GERANT', 'RECHARGE_CLIENT', 'RECHARGE_COUPON'] },
+      client: { salleId: req.user.salle_id }
+    }
+
+    if (clientId) where.clientId = Number(clientId)
+
+    if (date) {
+      const debut = new Date(date)
+      debut.setHours(0, 0, 0, 0)
+      const fin = new Date(date)
+      fin.setHours(23, 59, 59, 999)
+      where.date = { gte: debut, lte: fin }
+    }
+
+    const recharges = await prisma.transaction.findMany({
+      where,
+      select: {
+        id: true,
+        clientId: true,
+        client: {
+          select: {
+            pseudo: true,
+            telephone: true,
+            credits: {
+              select: {
+                solde: true,
+                categorie: { select: { id: true, nom: true } }
+              }
+            }
+          }
+        },
+        montant: true,
+        date: true,
+        type: true,
+        gerantId: true,
+      },
+      orderBy: { date: 'desc' }
+    })
+
+    // Enrichir avec le solde actuel par catégorie du client
+    const result = recharges.map(r => ({
+      ...r,
+      creditsClient: r.client.credits.map(c => ({
+        categorie: c.categorie.nom,
+        soldeSecondes: c.solde,
+        soldMinutes: Math.floor(c.solde / 60),
+      }))
+    }))
+
+    return res.json(result)
+  } catch (err) {
+    console.error('[gerant/recharges GET]', err)
+    return res.status(500).json({ message: 'Erreur serveur' })
   }
 }
 

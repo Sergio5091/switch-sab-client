@@ -5,22 +5,17 @@ import logger from '../../config/logger.js'
 
 export const rapportJour = async (req, res) => {
   try {
-    // Récupérer la date d'aujourd'hui (minuit)
     const debut = new Date()
     debut.setHours(0, 0, 0, 0)
-
     const fin = new Date()
     fin.setHours(23, 59, 59, 999)
 
-    // Récupérer les sessions du jour pour ce gérant
+    // Sessions du jour pour ce gérant
     const sessions = await prisma.session.findMany({
       where: {
         gerantId: req.user.id,
-        debut: {
-          gte: debut,
-          lte: fin
-        },
-        statut: { in: ['TERMINEE', 'ARRETEE'] }
+        debut: { gte: debut, lte: fin },
+        statut: { in: ['TERMINEE', 'ARRETEE', 'ACTIVE'] }
       },
       include: {
         client: { select: { pseudo: true, telephone: true, estEnfant: true } },
@@ -30,64 +25,75 @@ export const rapportJour = async (req, res) => {
       orderBy: { debut: 'asc' }
     })
 
-    // Calculer statistiques
+    // Recharges du jour faites par ce gérant
+    const recharges = await prisma.transaction.findMany({
+      where: {
+        gerantId: req.user.id,
+        type: 'RECHARGE_GERANT',
+        date: { gte: debut, lte: fin }
+      },
+      include: {
+        client: {
+          select: {
+            pseudo: true,
+            telephone: true,
+            credits: {
+              select: {
+                solde: true,
+                categorie: { select: { nom: true } }
+              }
+            }
+          }
+        }
+      },
+      orderBy: { date: 'asc' }
+    })
+
+    // Stats sessions
     const totalSessions = sessions.length
-    const totalMontant = sessions.reduce((sum, s) => sum + (s.duree.prix || 0), 0)
+    const totalMontantSessions = sessions.reduce((sum, s) => sum + (s.duree.prix || 0), 0)
     const totalSecondes = sessions.reduce((sum, s) => sum + (s.duree.secondes || 0), 0)
     const sessionBonus = sessions.filter(s => s.estBonus).length
     const sessionNormale = sessions.filter(s => !s.estBonus).length
 
-    // Grouper par catégorie
+    // Stats recharges
+    const totalMontantRecharges = recharges.reduce((sum, r) => sum + r.montant, 0)
+
+    // Grouper sessions par catégorie
     const parCategorie = {}
-    sessions.forEach(session => {
-      const categorie = session.poste.categorie.nom
-      if (!parCategorie[categorie]) {
-        parCategorie[categorie] = {
-          nombre: 0,
-          montant: 0,
-          secondes: 0
-        }
-      }
-      parCategorie[categorie].nombre++
-      parCategorie[categorie].montant += session.duree.prix || 0
-      parCategorie[categorie].secondes += session.duree.secondes || 0
+    sessions.forEach(s => {
+      const cat = s.poste.categorie.nom
+      if (!parCategorie[cat]) parCategorie[cat] = { nombre: 0, montant: 0, secondes: 0 }
+      parCategorie[cat].nombre++
+      parCategorie[cat].montant += s.duree.prix || 0
+      parCategorie[cat].secondes += s.duree.secondes || 0
     })
 
-    // Grouper par client
+    // Grouper sessions par client
     const parClient = {}
-    sessions.forEach(session => {
-      const client = session.client.pseudo
-      if (!parClient[client]) {
-        parClient[client] = {
-          nombre: 0,
-          montant: 0,
-          secondes: 0,
-          telephone: session.client.telephone,
-          estEnfant: session.client.estEnfant
-        }
-      }
-      parClient[client].nombre++
-      parClient[client].montant += session.duree.prix || 0
-      parClient[client].secondes += session.duree.secondes || 0
+    sessions.forEach(s => {
+      const pseudo = s.client.pseudo
+      if (!parClient[pseudo]) parClient[pseudo] = { nombre: 0, montant: 0, telephone: s.client.telephone, estEnfant: s.client.estEnfant }
+      parClient[pseudo].nombre++
+      parClient[pseudo].montant += s.duree.prix || 0
     })
-
-    logger.info(
-      `Rapport généré : ${totalSessions} sessions, ${totalMontant} unités, ${req.user.id}`
-    )
 
     return res.json({
       date: debut.toISOString().split('T')[0],
       gerant: req.user.pseudo,
       resume: {
         totalSessions,
-        totalMontant,
-        totalSecondes: Math.floor(totalSecondes / 60) + 'm', // Convertir en minutes
+        totalMontantSessions,
+        totalMontantRecharges,
+        totalMontantJour: totalMontantSessions + totalMontantRecharges,
+        totalSecondes: Math.floor(totalSecondes / 60) + 'm',
         sessionNormale,
         sessionBonus
       },
       parCategorie,
       parClient,
-      detail: sessions.map(s => ({
+      // Sessions avec statut détaillé
+      sessions: sessions.map(s => ({
         id: s.id,
         client: s.client.pseudo,
         poste: s.poste.nom,
@@ -97,14 +103,26 @@ export const rapportJour = async (req, res) => {
         debut: s.debut,
         fin: s.fin,
         statut: s.statut,
+        tempsRestant: s.tempsRestant,
         estBonus: s.estBonus
+      })),
+      // Recharges avec solde actuel du client
+      recharges: recharges.map(r => ({
+        id: r.id,
+        client: r.client.pseudo,
+        telephone: r.client.telephone,
+        montant: r.montant,
+        date: r.date,
+        creditsActuels: r.client.credits.map(c => ({
+          categorie: c.categorie.nom,
+          soldeMinutes: Math.floor(c.solde / 60),
+          soldeSecondes: c.solde
+        }))
       }))
     })
   } catch (err) {
     console.error('[gerant/rapport/jour GET]', err)
-    return res.status(500).json({
-      message: 'Erreur serveur'
-    })
+    return res.status(500).json({ message: 'Erreur serveur' })
   }
 }
 

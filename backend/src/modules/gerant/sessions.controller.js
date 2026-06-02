@@ -47,17 +47,15 @@ export const demarrerSession = async (req, res) => {
     }
 
     // 3. Vérifier durée existe et appartient à la catégorie
-    const duree = await prisma.duree.findFirst({
-      where: {
-        id: Number(dureeId),
-        categorieId: Number(categorieId)
-      }
-    })
-
-    if (!duree) {
-      return res.status(404).json({
-        message: 'Durée introuvable'
+    // Si dureeId non fourni → démarrage rapide : prendre la durée max que le client peut payer
+    let duree
+    if (dureeId) {
+      duree = await prisma.duree.findFirst({
+        where: { id: Number(dureeId), categorieId: Number(categorieId) }
       })
+      if (!duree) {
+        return res.status(404).json({ message: 'Durée introuvable' })
+      }
     }
 
     // 4. Déterminer quelle source de crédit utiliser (bonus ou crédit catégorie)
@@ -70,10 +68,22 @@ export const demarrerSession = async (req, res) => {
         where: { clientId: Number(clientId) }
       })
 
-      if (!bonus || !bonus.disponible || bonus.solde < duree.secondes) {
+      if (!bonus || !bonus.disponible || bonus.solde < (duree?.secondes ?? 0)) {
         return res.status(400).json({
           message: 'Bonus indisponible ou insuffisant'
         })
+      }
+
+      // Si pas de durée choisie, prendre la durée max avec le bonus
+      if (!duree) {
+        const toutesLesdurees = await prisma.duree.findMany({
+          where: { categorieId: Number(categorieId) },
+          orderBy: { secondes: 'desc' }
+        })
+        duree = toutesLesdurees.find(d => d.secondes <= bonus.solde)
+        if (!duree) {
+          return res.status(400).json({ message: 'Bonus insuffisant pour toute durée disponible' })
+        }
       }
 
       creditSource = bonus
@@ -87,7 +97,25 @@ export const demarrerSession = async (req, res) => {
         }
       })
 
-      if (!credit || credit.solde < duree.secondes) {
+      if (!credit || credit.solde <= 0) {
+        return res.status(400).json({
+          message: 'Crédit insuffisant pour cette catégorie'
+        })
+      }
+
+      // Si pas de durée choisie → démarrage rapide : prendre la durée max que le crédit peut couvrir
+      if (!duree) {
+        const toutesLesDurees = await prisma.duree.findMany({
+          where: { categorieId: Number(categorieId) },
+          orderBy: { secondes: 'desc' }
+        })
+        duree = toutesLesDurees.find(d => d.secondes <= credit.solde)
+        if (!duree) {
+          return res.status(400).json({ message: 'Crédit insuffisant pour toute durée disponible' })
+        }
+      }
+
+      if (credit.solde < duree.secondes) {
         return res.status(400).json({
           message: 'Crédit insuffisant pour cette catégorie'
         })

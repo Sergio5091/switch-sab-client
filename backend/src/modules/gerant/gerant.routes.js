@@ -12,6 +12,7 @@ import {
 import {
   creerRecharge,
   listerRechargesEnAttente,
+  listerHistoriqueRecharges,
   validerRecharge
 } from './recharges.controller.js'
 
@@ -54,6 +55,9 @@ router.patch('/clients/:id', modifierClient)
 
 // POST /gerant/recharges
 router.post('/recharges', creerRecharge)
+
+// GET /gerant/recharges — historique complet
+router.get('/recharges', listerHistoriqueRecharges)
 
 // GET /gerant/recharges/en-attente
 router.get('/recharges/en-attente', listerRechargesEnAttente)

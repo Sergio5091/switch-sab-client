@@ -6,6 +6,12 @@ export const creerCategorie = async (req, res) => {
   if (!nom) return res.status(400).json({ message: 'Le nom est requis' })
 
   try {
+    // Vérifier unicité du nom dans la salle
+    const existante = await prisma.categorie.findFirst({
+      where: { nom: { equals: nom, mode: 'insensitive' }, salleId: req.user.salle_id }
+    })
+    if (existante) return res.status(409).json({ message: `La catégorie "${nom}" existe déjà` })
+
     const categorie = await prisma.categorie.create({
       data: { nom, salleId: req.user.salle_id }
     })
@@ -41,6 +47,18 @@ export const modifierCategorie = async (req, res) => {
       where: { id, salleId: req.user.salle_id }
     })
     if (!existante) return res.status(404).json({ message: 'Catégorie introuvable' })
+
+    // Vérifier unicité du nouveau nom (hors soi-même)
+    if (nom && nom !== existante.nom) {
+      const doublon = await prisma.categorie.findFirst({
+        where: {
+          nom: { equals: nom, mode: 'insensitive' },
+          salleId: req.user.salle_id,
+          NOT: { id }
+        }
+      })
+      if (doublon) return res.status(409).json({ message: `La catégorie "${nom}" existe déjà` })
+    }
 
     const categorie = await prisma.categorie.update({
       where: { id },
