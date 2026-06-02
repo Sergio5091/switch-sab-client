@@ -34,11 +34,7 @@ import GerantRapport from "@/pages/gerant/rapport";
 
 import ClientHome from "@/pages/client/home";
 import ClientSession from "@/pages/client/session";
-import ClientRecharge from "@/pages/client/recharge";
 import ClientCoupon from "@/pages/client/coupon";
-import ClientPromoCode from "@/pages/client/promo-code";
-import ClientPromotions from "@/pages/client/promotions";
-import ClientLeaderboard from "@/pages/client/leaderboard";
 
 const queryClient = new QueryClient();
 
@@ -221,20 +217,8 @@ function Router() {
       <Route path="/client/session">
         {() => <ProtectedRoute component={ClientSession} roles={["client"]} />}
       </Route>
-      <Route path="/client/recharge">
-        {() => <ProtectedRoute component={ClientRecharge} roles={["client"]} />}
-      </Route>
       <Route path="/client/coupon">
         {() => <ProtectedRoute component={ClientCoupon} roles={["client"]} />}
-      </Route>
-      <Route path="/client/promo-code">
-        {() => <ProtectedRoute component={ClientPromoCode} roles={["client"]} />}
-      </Route>
-      <Route path="/client/promotions">
-        {() => <ProtectedRoute component={ClientPromotions} roles={["client"]} />}
-      </Route>
-      <Route path="/client/leaderboard">
-        {() => <ProtectedRoute component={ClientLeaderboard} roles={["client"]} />}
       </Route>
 
       <Route component={NotFound} />

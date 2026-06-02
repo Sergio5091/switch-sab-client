@@ -1,77 +1,134 @@
 import { useState, useEffect } from "react";
 import ClientLayout from "@/layouts/ClientLayout";
 import { Link } from "wouter";
-import { DollarSign, Gift, Clock, Play, Star, Zap, ChevronRight, Ticket } from "lucide-react";
+import { DollarSign, Gift, Clock, Play, Square, ChevronRight, Ticket, Wallet } from "lucide-react";
+import { Button } from "@/components/ui/button";
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "@/components/ui/dialog";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { cn } from "@/lib/utils";
 import { format } from "date-fns";
 import { fr } from "date-fns/locale";
+import { useToast } from "@/hooks/use-toast";
 import api from "@/services/api";
 
 function formatTime(secs: number) {
-  const m = Math.floor(secs / 60);
-  const s = secs % 60;
+  const m = Math.floor(Math.max(0, secs) / 60);
+  const s = Math.max(0, secs) % 60;
   return `${String(m).padStart(2, "0")}:${String(s).padStart(2, "0")}`;
 }
-
-interface HomeData {
-  pseudo: string;
-  credits: { solde: number; categorie: { id: number; nom: string } }[];
-  bonus: { solde: number; disponible: boolean } | null;
-  activeSession: { id: number; tempsRestant: number; estBonus: boolean; duree: { libelle: string; secondes: number; prix: number } } | null;
-  recentSessions: { id: number; debut: string; estBonus: boolean; duree: { libelle: string; prix: number }; poste: { nom: string } }[];
+function getTempsRestant(fin: string) {
+  return Math.max(0, Math.floor((new Date(fin).getTime() - Date.now()) / 1000));
 }
 
+interface Credit { solde: number; categorie: { id: number; nom: string } }
+interface ActiveSession { id: number; fin: string; estBonus: boolean; duree: { libelle: string; secondes: number } }
+interface RecentSession { id: number; debut: string; estBonus: boolean; duree: { libelle: string; prix: number }; poste: { nom: string } }
+interface HomeData {
+  pseudo: string;
+  soldeMonetaire: number;
+  credits: Credit[];
+  bonus: { solde: number; disponible: boolean } | null;
+  activeSession: ActiveSession | null;
+  recentSessions: RecentSession[];
+}
+interface Duree { id: number; libelle: string; secondes: number; prix: number }
+
 export default function ClientHome() {
+  const { toast } = useToast();
   const [data, setData] = useState<HomeData | null>(null);
-  const [tempsRestant, setTempsRestant] = useState(0);
+  const [tick, setTick] = useState(0);
+  const [openStart, setOpenStart] = useState(false);
+  const [categories, setCategories] = useState<{ id: number; nom: string }[]>([]);
+  const [catId, setCatId] = useState("");
+  const [durees, setDurees] = useState<Duree[]>([]);
+  const [dureeId, setDureeId] = useState("");
+  const [loading, setLoading] = useState(false);
+
+  const reload = () => api.get('/client/home').then(r => setData(r.data)).catch(console.error);
+
+  useEffect(() => { reload(); }, []);
+  useEffect(() => { const i = setInterval(() => setTick(t => t + 1), 1000); return () => clearInterval(i); }, []);
 
   useEffect(() => {
-    api.get('/client/home').then(r => {
-      setData(r.data);
-      setTempsRestant(r.data.activeSession?.tempsRestant ?? 0);
-    }).catch(console.error);
-  }, []);
+    if (!openStart) return;
+    api.get('/client/categories').then(r => setCategories(r.data)).catch(console.error);
+  }, [openStart]);
 
   useEffect(() => {
+    if (!catId) return;
+    setDureeId("");
+    api.get(`/client/categories/${catId}/durees`).then(r => setDurees(r.data)).catch(console.error);
+  }, [catId]);
+
+  async function handleStart() {
+    if (!catId || !dureeId) return;
+    setLoading(true);
+    try {
+      await api.post('/client/session/start', { categorieId: Number(catId), dureeId: Number(dureeId) });
+      toast({ title: "Session démarrée !" });
+      setOpenStart(false);
+      setCatId(""); setDureeId("");
+      reload();
+    } catch (err: any) {
+      toast({ title: err.response?.data?.message ?? "Erreur", variant: "destructive" });
+    } finally { setLoading(false); }
+  }
+
+  async function handleStop() {
     if (!data?.activeSession) return;
-    const interval = setInterval(() => setTempsRestant(t => Math.max(0, t - 1)), 1000);
-    return () => clearInterval(interval);
-  }, [data?.activeSession]);
+    setLoading(true);
+    try {
+      await api.post(`/client/session/${data.activeSession.id}/stop`);
+      toast({ title: "Session arrêtée" });
+      reload();
+    } catch (err: any) {
+      toast({ title: err.response?.data?.message ?? "Erreur", variant: "destructive" });
+    } finally { setLoading(false); }
+  }
 
   const activeSession = data?.activeSession ?? null;
+  const tempsRestant = activeSession ? getTempsRestant(activeSession.fin) : 0;
   const pct = activeSession ? (tempsRestant / activeSession.duree.secondes) * 100 : 0;
-  const urgentColor = activeSession && pct < 10 ? "text-destructive" : activeSession && pct < 25 ? "text-yellow-400" : "text-green-400";
+  const urgentColor = pct < 10 ? "text-destructive" : pct < 25 ? "text-yellow-400" : "text-green-400";
+  const selectedDuree = durees.find(d => d.id === Number(dureeId));
+  const creditCat = data?.credits.find(c => c.categorie.id === Number(catId));
 
   return (
     <ClientLayout>
-      <div className="px-4 pt-6 pb-4 space-y-5">
+      <div className="px-4 pt-6 pb-4 space-y-5 max-w-2xl mx-auto">
         {/* Header */}
         <div>
           <p className="text-sm text-muted-foreground">Bonjour 👋</p>
           <h1 className="text-2xl font-bold text-foreground">{data?.pseudo ?? "Client"}</h1>
         </div>
 
-        {/* Balances */}
+        {/* Soldes */}
         <div className="grid grid-cols-2 gap-3">
           <div className="bg-gradient-to-br from-primary/20 to-primary/5 border border-primary/30 rounded-2xl p-4">
-            <div className="flex items-center gap-1.5 text-xs text-muted-foreground mb-1.5">
-              <DollarSign size={11} /> Crédit
-            </div>
-            <div className="text-2xl font-bold text-foreground">
-              {(data?.credits.reduce((acc, c) => acc + c.solde, 0) ?? 0)} s
-            </div>
-            <div className="text-xs text-muted-foreground">secondes crédit</div>
+            <div className="flex items-center gap-1.5 text-xs text-muted-foreground mb-1.5"><Wallet size={11} /> Solde</div>
+            <div className="text-2xl font-bold text-foreground">{(data?.soldeMonetaire ?? 0).toLocaleString()}</div>
+            <div className="text-xs text-muted-foreground">FCFA</div>
           </div>
           <div className="bg-gradient-to-br from-orange-500/20 to-orange-500/5 border border-orange-500/30 rounded-2xl p-4">
-            <div className="flex items-center gap-1.5 text-xs text-muted-foreground mb-1.5">
-              <Gift size={11} /> Bonus
-            </div>
+            <div className="flex items-center gap-1.5 text-xs text-muted-foreground mb-1.5"><Gift size={11} /> Bonus</div>
             <div className="text-2xl font-bold text-foreground">{Math.floor((data?.bonus?.solde ?? 0) / 60)}</div>
             <div className="text-xs text-muted-foreground">minutes offertes</div>
           </div>
         </div>
 
-        {/* Active session */}
+        {/* Crédits par catégorie */}
+        {(data?.credits ?? []).length > 0 && (
+          <div className="grid grid-cols-3 gap-2">
+            {data!.credits.map(c => (
+              <div key={c.categorie.id} className="bg-card border border-border rounded-xl p-3 text-center">
+                <div className="text-xs text-muted-foreground font-medium">{c.categorie.nom}</div>
+                <div className="text-lg font-bold text-foreground mt-1">{Math.floor(c.solde / 60)}<span className="text-xs font-normal text-muted-foreground ml-0.5">min</span></div>
+              </div>
+            ))}
+          </div>
+        )}
+
+        {/* Session active */}
         {activeSession ? (
           <div className="bg-card border border-green-500/30 rounded-2xl p-4">
             <div className="flex items-center gap-2 mb-3">
@@ -79,20 +136,18 @@ export default function ClientHome() {
               <span className="text-xs font-semibold text-green-400 uppercase tracking-wide">Session en cours</span>
             </div>
             <div className="flex items-center justify-between mb-2">
-              <div className={cn("font-mono text-4xl font-bold", urgentColor)}>
-                {formatTime(tempsRestant)}
-              </div>
+              <div className={cn("font-mono text-4xl font-bold", urgentColor)}>{formatTime(tempsRestant)}</div>
               <div className="text-right">
                 <div className="text-sm text-foreground font-medium">{activeSession.duree.libelle}</div>
                 {activeSession.estBonus && <div className="text-xs text-primary">Session bonus</div>}
               </div>
             </div>
-            <div className="h-2 bg-muted rounded-full overflow-hidden">
-              <div
-                className={cn("h-full rounded-full transition-all", pct < 10 ? "bg-destructive" : pct < 25 ? "bg-yellow-400" : "bg-green-400")}
-                style={{ width: `${pct}%` }}
-              />
+            <div className="h-2 bg-muted rounded-full overflow-hidden mb-3">
+              <div className={cn("h-full rounded-full transition-all", pct < 10 ? "bg-destructive" : pct < 25 ? "bg-yellow-400" : "bg-green-400")} style={{ width: `${pct}%` }} />
             </div>
+            <Button size="sm" variant="destructive" className="w-full gap-1.5" onClick={handleStop} disabled={loading}>
+              <Square size={13} /> Arrêter la session
+            </Button>
           </div>
         ) : (
           <div className="bg-card border border-border rounded-2xl p-5 text-center space-y-3">
@@ -101,68 +156,84 @@ export default function ClientHome() {
             </div>
             <div>
               <div className="text-sm font-medium text-foreground">Pas de session active</div>
-              <div className="text-xs text-muted-foreground mt-0.5">Demandez un gérant pour démarrer</div>
+              <div className="text-xs text-muted-foreground mt-0.5">Démarrez une session ou demandez à un gérant</div>
             </div>
+            <Button size="sm" className="gap-1.5" onClick={() => setOpenStart(true)}>
+              <Play size={13} /> Démarrer une session
+            </Button>
           </div>
         )}
 
-        {/* Quick actions */}
-        <div className="grid grid-cols-3 gap-3">
-          <Link href="/client/recharge">
-            <a className="bg-card border border-border rounded-xl p-3 flex flex-col items-center gap-2 hover:border-primary/30 transition-colors">
-              <div className="w-9 h-9 rounded-xl bg-primary/10 flex items-center justify-center">
-                <Zap size={16} className="text-primary" />
+        {/* Action coupon */}
+        <Link href="/client/coupon">
+          <div className="bg-card border border-border rounded-xl p-4 flex items-center justify-between hover:border-primary/30 transition-colors cursor-pointer">
+            <div className="flex items-center gap-3">
+              <div className="w-9 h-9 rounded-xl bg-orange-500/10 flex items-center justify-center"><Ticket size={16} className="text-orange-400" /></div>
+              <div>
+                <div className="text-sm font-medium text-foreground">Coupon de recharge</div>
+                <div className="text-xs text-muted-foreground">Utilisez un code coupon</div>
               </div>
-              <span className="text-xs text-muted-foreground font-medium text-center">Recharger</span>
-            </a>
-          </Link>
-          <Link href="/client/coupon">
-            <a className="bg-card border border-border rounded-xl p-3 flex flex-col items-center gap-2 hover:border-primary/30 transition-colors">
-              <div className="w-9 h-9 rounded-xl bg-orange-500/10 flex items-center justify-center">
-                <Ticket size={16} className="text-orange-400" />
-              </div>
-              <span className="text-xs text-muted-foreground font-medium text-center">Coupon</span>
-            </a>
-          </Link>
-          <Link href="/client/leaderboard">
-            <a className="bg-card border border-border rounded-xl p-3 flex flex-col items-center gap-2 hover:border-primary/30 transition-colors">
-              <div className="w-9 h-9 rounded-xl bg-yellow-500/10 flex items-center justify-center">
-                <Star size={16} className="text-yellow-400" />
-              </div>
-              <span className="text-xs text-muted-foreground font-medium text-center">Top joueurs</span>
-            </a>
-          </Link>
-        </div>
+            </div>
+            <ChevronRight size={16} className="text-muted-foreground" />
+          </div>
+        </Link>
 
-        {/* Recent sessions */}
-          {(data?.recentSessions ?? []).length > 0 && (
+        {/* Sessions récentes */}
+        {(data?.recentSessions ?? []).length > 0 && (
           <div className="bg-card border border-border rounded-2xl overflow-hidden">
             <div className="flex items-center justify-between px-4 py-3 border-b border-border">
               <span className="text-sm font-semibold text-foreground">Sessions récentes</span>
               <Link href="/client/session">
-                <a className="text-xs text-primary flex items-center gap-0.5">Tout voir <ChevronRight size={12} /></a>
+                <span className="text-xs text-primary flex items-center gap-0.5 cursor-pointer">Tout voir <ChevronRight size={12} /></span>
               </Link>
             </div>
             <div className="divide-y divide-border">
-              {(data?.recentSessions ?? []).map(s => (
+              {data!.recentSessions.map(s => (
                 <div key={s.id} className="flex items-center justify-between px-4 py-3">
                   <div className="flex items-center gap-2">
                     <Clock size={13} className="text-muted-foreground" />
                     <div>
-                      <div className="text-sm text-foreground">{s.duree.libelle}</div>
+                      <div className="text-sm text-foreground">{s.duree.libelle} — {s.poste.nom}</div>
                       <div className="text-xs text-muted-foreground">{format(new Date(s.debut), "dd MMM · HH:mm", { locale: fr })}</div>
                     </div>
                   </div>
-                  <div className="text-right">
-                    <div className="text-sm font-semibold text-primary">{s.duree.prix.toLocaleString()} F</div>
-                    {s.estBonus && <div className="text-xs text-orange-400">Bonus</div>}
-                  </div>
+                  <div className="text-sm font-semibold text-primary">{s.duree.prix.toLocaleString()} F</div>
                 </div>
               ))}
             </div>
           </div>
         )}
       </div>
+
+      {/* Dialog démarrer session */}
+      <Dialog open={openStart} onOpenChange={v => { if (!v) { setOpenStart(false); setCatId(""); setDureeId(""); } }}>
+        <DialogContent className="sm:max-w-sm">
+          <DialogHeader><DialogTitle>Démarrer une session</DialogTitle></DialogHeader>
+          <div className="space-y-3">
+            <Select value={catId} onValueChange={setCatId}>
+              <SelectTrigger><SelectValue placeholder="Choisir une catégorie" /></SelectTrigger>
+              <SelectContent>{categories.map(c => <SelectItem key={c.id} value={String(c.id)}>{c.nom}</SelectItem>)}</SelectContent>
+            </Select>
+            {catId && (
+              <Select value={dureeId} onValueChange={setDureeId}>
+                <SelectTrigger><SelectValue placeholder="Choisir une durée" /></SelectTrigger>
+                <SelectContent>{durees.map(d => <SelectItem key={d.id} value={String(d.id)}>{d.libelle} — {d.prix.toLocaleString()} F</SelectItem>)}</SelectContent>
+              </Select>
+            )}
+            {selectedDuree && creditCat && (
+              <div className="text-xs text-muted-foreground bg-muted/30 rounded-lg px-3 py-2">
+                Crédit disponible : <span className="font-semibold text-foreground">{Math.floor(creditCat.solde / 60)} min</span>
+                {creditCat.solde < selectedDuree.secondes && <span className="text-destructive ml-2">— Insuffisant</span>}
+              </div>
+            )}
+          </div>
+          <DialogFooter>
+            <Button onClick={handleStart} disabled={!catId || !dureeId || loading || (!!selectedDuree && !!creditCat && creditCat.solde < selectedDuree.secondes)}>
+              <Play size={14} className="mr-1.5" /> Démarrer
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </ClientLayout>
   );
 }

@@ -348,7 +348,7 @@ export const detailSession = async (req, res) => {
 
 const sessionTimeouts = {}
 
-function scheduleSessionEnd(sessionId, posteId, delayMs) {
+export function scheduleSessionEnd(sessionId, posteId, delayMs) {
   sessionTimeouts[sessionId] = setTimeout(() => {
     delete sessionTimeouts[sessionId]
     endSessionAuto(sessionId, posteId)
