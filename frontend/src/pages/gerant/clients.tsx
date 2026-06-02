@@ -138,7 +138,7 @@ export default function GerantClients() {
                   )}
                 </div>
                 <div className="flex items-center gap-3 flex-shrink-0 text-xs text-muted-foreground">
-                  {c.credits?.map(cr => (
+                  {c.credits?.filter(cr => cr.solde > 0).map(cr => (
                     <div key={cr.id} className="text-right">
                       <div className="font-medium text-foreground">{cr.categorie.nom}</div>
                       <div className="flex items-center gap-1 text-primary"><Clock size={9} /> {Math.floor(cr.solde / 60)}min</div>

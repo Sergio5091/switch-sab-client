@@ -116,15 +116,18 @@ export default function ClientHome() {
           </div>
         </div>
 
-        {/* Crédits par catégorie */}
-        {(data?.credits ?? []).length > 0 && (
-          <div className="grid grid-cols-3 gap-2">
-            {data!.credits.map(c => (
-              <div key={c.categorie.id} className="bg-card border border-border rounded-xl p-3 text-center">
-                <div className="text-xs text-muted-foreground font-medium">{c.categorie.nom}</div>
-                <div className="text-lg font-bold text-foreground mt-1">{Math.floor(c.solde / 60)}<span className="text-xs font-normal text-muted-foreground ml-0.5">min</span></div>
-              </div>
-            ))}
+        {/* Crédits par catégorie — uniquement ceux > 0 */}
+        {(data?.credits ?? []).filter(c => c.solde > 0).length > 0 && (
+          <div className="space-y-2">
+            <p className="text-xs text-muted-foreground font-medium">Votre crédit</p>
+            <div className="grid grid-cols-3 gap-2">
+              {data!.credits.filter(c => c.solde > 0).map(c => (
+                <div key={c.categorie.id} className="bg-card border border-border rounded-xl p-3 text-center">
+                  <div className="text-xs text-muted-foreground font-medium">{c.categorie.nom}</div>
+                  <div className="text-lg font-bold text-foreground mt-1">{Math.floor(c.solde / 60)}<span className="text-xs font-normal text-muted-foreground ml-0.5">min</span></div>
+                </div>
+              ))}
+            </div>
           </div>
         )}
 

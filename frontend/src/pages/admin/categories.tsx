@@ -7,9 +7,9 @@ import { Form, FormControl, FormField, FormItem, FormLabel, FormMessage } from "
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { z } from "zod";
-import { Plus, Pencil, Trash2, Tag, ChevronRight } from "lucide-react";
+import { Plus, Pencil, Trash2, Tag, ChevronRight, AlertCircle } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
-import { Link } from "wouter";
+import { Link, useLocation } from "wouter";
 import adminService, { Categorie } from "@/services/adminService";
 
 const schema = z.object({ nom: z.string().min(1, "Nom requis"), couleur: z.string().min(4, "Couleur requise") });
@@ -26,10 +26,12 @@ const COLOR_OPTIONS = [
 
 export default function AdminCategories() {
   const { toast } = useToast();
+  const [, navigate] = useLocation();
   const [categories, setCategories] = useState<Categorie[]>([]);
   const [open, setOpen] = useState(false);
   const [editing, setEditing] = useState<Categorie | null>(null);
   const [deleteId, setDeleteId] = useState<number | null>(null);
+  const [promptTarifsId, setPromptTarifsId] = useState<number | null>(null);
 
   useEffect(() => {
     adminService.getCategories().then(setCategories).catch(() => toast({ title: "Erreur chargement catégories", variant: "destructive" }));
@@ -60,6 +62,10 @@ export default function AdminCategories() {
         const created = await adminService.createCategorie({ nom: values.nom });
         setCategories(prev => [...prev, { ...created, couleur: values.couleur }]);
         toast({ title: "Catégorie créée" });
+        setOpen(false);
+        // Proposer d'ajouter les tarifs immédiatement
+        setPromptTarifsId(created.id);
+        return;
       }
       setOpen(false);
     } catch (err: any) {
@@ -158,6 +164,27 @@ export default function AdminCategories() {
             <DialogFooter>
               <Button variant="ghost" onClick={() => setDeleteId(null)}>Annuler</Button>
               <Button variant="destructive" onClick={() => deleteId && handleDelete(deleteId)}>Supprimer</Button>
+            </DialogFooter>
+          </DialogContent>
+        </Dialog>
+
+        {/* Dialog prompt tarifs après création */}
+        <Dialog open={!!promptTarifsId} onOpenChange={() => setPromptTarifsId(null)}>
+          <DialogContent className="sm:max-w-sm">
+            <DialogHeader>
+              <div className="flex items-center gap-2 mb-1">
+                <AlertCircle size={18} className="text-yellow-400" />
+                <DialogTitle>Ajouter les tarifs</DialogTitle>
+              </div>
+            </DialogHeader>
+            <p className="text-sm text-muted-foreground">
+              La catégorie a été créée. Pour que les gérants puissent l'utiliser, vous devez ajouter au moins un tarif (durée + prix).
+            </p>
+            <DialogFooter className="gap-2 mt-2">
+              <Button variant="ghost" onClick={() => setPromptTarifsId(null)}>Plus tard</Button>
+              <Button onClick={() => { navigate(`/admin/categories/${promptTarifsId}/durees`); setPromptTarifsId(null); }}>
+                Ajouter les tarifs <ChevronRight size={14} />
+              </Button>
             </DialogFooter>
           </DialogContent>
         </Dialog>

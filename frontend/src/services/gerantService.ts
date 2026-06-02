@@ -65,14 +65,38 @@ export interface RapportJour {
   gerant: string;
   resume: {
     totalSessions: number;
-    totalMontant: number;
+    totalMontantSessions: number;
+    totalMontantRecharges: number;
+    totalMontantJour: number;
     totalSecondes: string;
     sessionNormale: number;
     sessionBonus: number;
   };
   parCategorie: Record<string, { nombre: number; montant: number; secondes: number }>;
   parClient: Record<string, { nombre: number; montant: number; telephone: string; estEnfant: boolean }>;
-  detail: {
+  sessions: {
+    id: number;
+    client: string;
+    poste: string;
+    categorie: string;
+    duree: string;
+    montant: number;
+    debut: string;
+    fin?: string;
+    statut: string;
+    tempsRestant: number;
+    estBonus: boolean;
+  }[];
+  recharges: {
+    id: number;
+    client: string;
+    telephone: string;
+    montant: number;
+    date: string;
+    creditsActuels: { categorie: string; soldeMinutes: number; soldeSecondes: number }[];
+  }[];
+  // Rétrocompatibilité : detail = sessions
+  detail?: {
     id: number;
     client: string;
     poste: string;
@@ -130,6 +154,15 @@ const gerantService = {
 
   getRechargesEnAttente: async (): Promise<Recharge[]> => {
     const res = await api.get('/gerant/recharges/en-attente');
+    return res.data;
+  },
+
+  getHistoriqueRecharges: async (params?: { clientId?: number; date?: string }): Promise<any[]> => {
+    const query = new URLSearchParams();
+    if (params?.clientId) query.set('clientId', String(params.clientId));
+    if (params?.date) query.set('date', params.date);
+    const qs = query.toString();
+    const res = await api.get(`/gerant/recharges${qs ? '?' + qs : ''}`);
     return res.data;
   },
 
