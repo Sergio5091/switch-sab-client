@@ -3,9 +3,6 @@ import * as switchService from '../../switch/switchService.js'
 import { getIO } from '../../socket.js'
 import logger from '../../config/logger.js'
 
-// Store timers en mémoire pour gérer les countdowns
-const sessionTimers = {} // { [sessionId]: { interval, remainingTime } }
-
 // ─── POST /gerant/sessions → Démarrer session ────────────────────────────
 
 export const demarrerSession = async (req, res) => {
@@ -128,7 +125,8 @@ export const demarrerSession = async (req, res) => {
         })
       }
 
-      // Créer session
+      // Créer session avec finPrevue
+      const finPrevue = new Date(Date.now() + duree.secondes * 1000)
       const newSession = await tx.session.create({
         data: {
           clientId: Number(clientId),
@@ -136,6 +134,7 @@ export const demarrerSession = async (req, res) => {
           posteId: posteLibre.id,
           dureeId: Number(dureeId),
           tempsRestant: duree.secondes,
+          fin: finPrevue,
           statut: 'ACTIVE',
           estBonus
         },
@@ -165,12 +164,12 @@ export const demarrerSession = async (req, res) => {
       sessionId: session.id,
       posteId: posteLibre.id,
       clientId: Number(clientId),
-      tempsRestant: session.tempsRestant,
+      finPrevue: session.fin,
       estBonus
     })
 
-    // 9. Démarrer countdown
-    startSessionCountdown(session.id, duree.secondes, posteLibre.id)
+    // 9. setTimeout pour fin automatique
+    scheduleSessionEnd(session.id, posteLibre.id, duree.secondes * 1000)
 
     logger.info(
       `Session démarrée : Client ${client.pseudo} sur ${categorie.nom} (${duree.libelle})`
@@ -184,7 +183,7 @@ export const demarrerSession = async (req, res) => {
         clientPseudo: session.client.pseudo,
         posteId: session.posteId,
         dureeId: session.dureeId,
-        tempsRestant: session.tempsRestant,
+        finPrevue: session.fin,
         statut: session.statut,
         estBonus: session.estBonus,
         debut: session.debut
@@ -225,10 +224,10 @@ export const arreterSession = async (req, res) => {
       })
     }
 
-    // 2. Arrêter le timer
-    if (sessionTimers[sessionId]) {
-      clearInterval(sessionTimers[sessionId].interval)
-      delete sessionTimers[sessionId]
+    // 2. Annuler le setTimeout
+    if (sessionTimeouts[sessionId]) {
+      clearTimeout(sessionTimeouts[sessionId])
+      delete sessionTimeouts[sessionId]
     }
 
     // 3. TRANSACTION : mettre à jour session + libérer poste
@@ -290,14 +289,14 @@ export const listerSessions = async (req, res) => {
       select: {
         id: true,
         clientId: true,
+        posteId: true,
         client: { select: { pseudo: true, telephone: true } },
         poste: { select: { id: true, nom: true } },
-        duree: { select: { libelle: true, secondes: true } },
-        tempsRestant: true,
+        duree: { select: { libelle: true, secondes: true, prix: true } },
+        fin: true,
         statut: true,
         estBonus: true,
-        debut: true,
-        fin: true
+        debut: true
       },
       orderBy: { debut: 'desc' }
     })
@@ -345,43 +344,15 @@ export const detailSession = async (req, res) => {
   }
 }
 
-// ─── Fonction interne : Countdown en temps réel ─────────────────────────
+// ─── Fonction interne : Planifier fin automatique ────────────────────────
 
-function startSessionCountdown(sessionId, tempsRestantInitial, posteId) {
-  let remaining = tempsRestantInitial
-  const io = getIO()
+const sessionTimeouts = {}
 
-  const interval = setInterval(async () => {
-    remaining--
-
-    // Envoyer tick chaque seconde
-    io.emit('session:tick', {
-      sessionId,
-      posteId,
-      tempsRestant: remaining
-    })
-
-    // Vérifier toutes les 10 secondes pour sync DB
-    if (remaining % 10 === 0 && remaining > 0) {
-      try {
-        await prisma.session.update({
-          where: { id: sessionId },
-          data: { tempsRestant: remaining }
-        })
-      } catch (err) {
-        logger.warn(`Erreur sync temps session ${sessionId}:`, err.message)
-      }
-    }
-
-    // Si temps = 0, extinction automatique
-    if (remaining <= 0) {
-      clearInterval(interval)
-      delete sessionTimers[sessionId]
-      endSessionAuto(sessionId, posteId)
-    }
-  }, 1000)
-
-  sessionTimers[sessionId] = { interval, remainingTime: remaining }
+function scheduleSessionEnd(sessionId, posteId, delayMs) {
+  sessionTimeouts[sessionId] = setTimeout(() => {
+    delete sessionTimeouts[sessionId]
+    endSessionAuto(sessionId, posteId)
+  }, delayMs)
 }
 
 // ─── Fonction interne : Fin automatique session ────────────────────────
@@ -464,6 +435,6 @@ async function endSessionAuto(sessionId, posteId) {
   }
 }
 
-// ─── Exporter pour utilisation externe (Socket.io) ─────────────────────
+// ─── Exporter pour utilisation externe ─────────────────────────────────
 
-export const getSessionTimers = () => sessionTimers
+export const getSessionTimeouts = () => sessionTimeouts

@@ -1,5 +1,4 @@
 import { useState, useEffect, useCallback } from "react";
-import { useApp } from "@/contexts/AppContext";
 import AdminLayout from "@/layouts/AdminLayout";
 import { Button } from "@/components/ui/button";
 import { Monitor, Square, Play, Clock } from "lucide-react";
@@ -7,20 +6,25 @@ import { useToast } from "@/hooks/use-toast";
 import { Badge } from "@/components/ui/badge";
 import { cn } from "@/lib/utils";
 import { Link } from "wouter";
+import { io } from "socket.io-client";
 import gerantService, { Session, Poste, Categorie } from "@/services/gerantService";
 
 function formatTime(secs: number) {
-  const m = Math.floor(secs / 60);
-  const s = secs % 60;
+  const m = Math.floor(Math.max(0, secs) / 60);
+  const s = Math.max(0, secs) % 60;
   return `${String(m).padStart(2, "0")}:${String(s).padStart(2, "0")}`;
 }
 
+function getTempsRestant(fin: string) {
+  return Math.max(0, Math.floor((new Date(fin).getTime() - Date.now()) / 1000));
+}
+
 export default function GerantDashboard() {
-  const { currentUser } = useApp();
   const { toast } = useToast();
   const [postes, setPostes] = useState<Poste[]>([]);
   const [sessions, setSessions] = useState<Session[]>([]);
   const [categories, setCategories] = useState<Categorie[]>([]);
+  const [tick, setTick] = useState(0);
 
   const load = useCallback(async () => {
     const [p, s, c] = await Promise.all([
@@ -33,19 +37,22 @@ export default function GerantDashboard() {
     setCategories(c);
   }, []);
 
-  useEffect(() => { load(); }, [load]);
-
-  // Décompte temps réel des sessions actives
+  // Timer local — force re-render chaque seconde
   useEffect(() => {
-    const interval = setInterval(() => {
-      setSessions(prev => prev.map(s => {
-        if (s.statut !== 'ACTIVE' || s.tempsRestant <= 0) return s;
-        const newTemps = s.tempsRestant - 1;
-        return { ...s, tempsRestant: newTemps, statut: newTemps <= 0 ? 'TERMINEE' : 'ACTIVE' };
-      }));
-    }, 1000);
+    const interval = setInterval(() => setTick(t => t + 1), 1000);
     return () => clearInterval(interval);
   }, []);
+
+  // Socket — uniquement pour les événements de changement d'état
+  useEffect(() => {
+    const socketUrl = new URL(import.meta.env.VITE_API_URL ?? "http://localhost:3000/api").origin;
+    const socket = io(socketUrl);
+    socket.on("connect", () => { load(); });
+    socket.on("session:start", () => { load(); });
+    socket.on("session:end", () => { load(); });
+    socket.on("session:stop", () => { load(); });
+    return () => { socket.disconnect(); };
+  }, [load]);
 
   async function handleStop(sessionId: number, posteNom: string) {
     try {
@@ -88,7 +95,8 @@ export default function GerantDashboard() {
             <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-3">
               {catPostes.map(poste => {
                 const activeSession = sessions.find(s => s.posteId === poste.id && s.statut === 'ACTIVE');
-                const pct = activeSession ? (activeSession.tempsRestant / (activeSession.duree?.secondes ?? 1)) * 100 : 0;
+                const tempsRestant = activeSession ? getTempsRestant(activeSession.fin) : 0;
+                const pct = activeSession ? (tempsRestant / (activeSession.duree?.secondes ?? 1)) * 100 : 0;
                 const urgentColor = pct < 10 ? "text-destructive" : pct < 25 ? "text-yellow-400" : "text-green-400";
 
                 return (
@@ -128,7 +136,7 @@ export default function GerantDashboard() {
                             <div className="flex items-center gap-1.5 text-xs text-muted-foreground">
                               <Clock size={11} />
                               <span className={cn("font-mono font-bold text-base", urgentColor)}>
-                                {formatTime(activeSession.tempsRestant)}
+                                {formatTime(tempsRestant)}
                               </span>
                             </div>
                             <span className="text-xs text-muted-foreground">{activeSession.duree?.libelle}</span>

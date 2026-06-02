@@ -21,11 +21,10 @@ export interface Session {
   clientPseudo?: string;
   posteId: number;
   dureeId: number;
-  tempsRestant: number;
+  fin: string; // finPrevue ISO
   statut: 'ACTIVE' | 'ARRETEE' | 'TERMINEE';
   estBonus: boolean;
   debut: string;
-  fin?: string;
   client: { pseudo: string; telephone: string };
   poste: { id: number; nom: string };
   duree: { libelle: string; secondes: number; prix: number };
