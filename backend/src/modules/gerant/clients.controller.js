@@ -5,50 +5,32 @@ import logger from '../../config/logger.js'
 // ─── POST /gerant/clients → Créer client ──────────────────────────────────
 
 export const creerClient = async (req, res) => {
-  const { pseudo, telephone, estEnfant, codeParental } = req.body
+  const { pseudo, motDePasse, telephone, estEnfant, codeParental } = req.body
 
-  // Validation
-  if (!pseudo || !telephone) {
-    return res.status(400).json({
-      message: 'pseudo et téléphone requis'
-    })
+  if (!pseudo || !motDePasse) {
+    return res.status(400).json({ message: 'pseudo et motDePasse requis' })
+  }
+
+  if (motDePasse.length < 6) {
+    return res.status(400).json({ message: 'Le mot de passe doit contenir au moins 6 caractères' })
   }
 
   if (estEnfant && !codeParental) {
-    return res.status(400).json({
-      message: 'Code parental requis pour les enfants'
-    })
+    return res.status(400).json({ message: 'Code parental requis pour les enfants' })
   }
 
   try {
-    // Vérifier unicité pseudo
-    const pseudoExistant = await prisma.user.findUnique({
-      where: { pseudo }
-    })
+    const pseudoExistant = await prisma.user.findUnique({ where: { pseudo } })
     if (pseudoExistant) {
-      return res.status(409).json({
-        message: 'Ce pseudo est déjà utilisé'
-      })
+      return res.status(409).json({ message: 'Ce pseudo est déjà utilisé' })
     }
 
-    // Vérifier unicité téléphone
-    const telExistant = await prisma.user.findUnique({
-      where: { telephone }
-    })
-    if (telExistant) {
-      return res.status(409).json({
-        message: 'Ce numéro de téléphone est déjà utilisé'
-      })
-    }
-
-    // Créer client
-    const motDePasse = Math.random().toString(36).slice(-8) // Mot de passe temporaire
     const hash = await bcrypt.hash(motDePasse, 10)
 
     const client = await prisma.user.create({
       data: {
         pseudo,
-        telephone,
+        telephone: telephone || `auto-${Date.now()}`,
         motDePasse: hash,
         role: 'CLIENT',
         estEnfant: estEnfant || false,
@@ -82,7 +64,7 @@ export const creerClient = async (req, res) => {
       }
     })
 
-    logger.info(`Client créé : ${pseudo} (${telephone})`)
+    logger.info(`Client créé : ${pseudo} (${client.telephone})`)
 
     return res.status(201).json({
       id: client.id,

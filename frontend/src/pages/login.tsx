@@ -13,15 +13,15 @@ import { useToast } from "@/hooks/use-toast";
 import { cn } from "@/lib/utils";
 
 const schema = z.object({
-  email: z.string().email("Email invalide"),
+  identifiant: z.string().min(1, "Pseudo ou email requis"),
   password: z.string().min(1, "Mot de passe requis"),
 });
 type FormValues = z.infer<typeof schema>;
 
 const DEMO_ACCOUNTS = [
-  { label: "Admin", email: "admin@switch.bj", color: "text-blue-500 dark:text-blue-400" },
-  { label: "Gérant", email: "gerant@switch.bj", color: "text-green-500 dark:text-green-400" },
-  { label: "Client", email: "client@switch.bj", color: "text-purple-500 dark:text-purple-400" },
+  { label: "Admin", identifiant: "admin@switch.bj", color: "text-blue-500 dark:text-blue-400" },
+  { label: "Gérant", identifiant: "gerant1", color: "text-green-500 dark:text-green-400" },
+  { label: "Client", identifiant: "KevG", color: "text-purple-500 dark:text-purple-400" },
 ];
 
 function Particle({ style, delay }: { style: React.CSSProperties; delay: number }) {
@@ -153,13 +153,13 @@ export default function LoginPage() {
 
   const form = useForm<FormValues>({
     resolver: zodResolver(schema),
-    defaultValues: { email: "", password: "admin123" },
+    defaultValues: { identifiant: "", password: "admin123" },
   });
 
   function onSubmit(values: FormValues) {
     setError("");
     setLoading(true);
-    login(values.email, values.password)
+    login(values.identifiant, values.password)
       .then((result) => {
         setLoading(false);
         if (result.success && result.licenceRequired) {
@@ -181,8 +181,8 @@ export default function LoginPage() {
       });
   }
 
-  function fillDemo(email: string) {
-    form.setValue("email", email);
+  function fillDemo(identifiant: string) {
+    form.setValue("identifiant", identifiant);
     form.setValue("password", "admin123");
     setError("");
   }
@@ -224,16 +224,16 @@ export default function LoginPage() {
             </div>
             <Form {...form}>
               <form onSubmit={form.handleSubmit(onSubmit)} className="space-y-4">
-                <FormField control={form.control} name="email" render={({ field }) => (
+                <FormField control={form.control} name="identifiant" render={({ field }) => (
                   <FormItem>
-                    <FormLabel className="text-foreground text-sm">Email</FormLabel>
+                    <FormLabel className="text-foreground text-sm">Pseudo ou Email</FormLabel>
                     <FormControl>
                       <div className="relative">
                         <Mail size={15} className="absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground" />
                         <Input
                           {...field}
-                          type="email"
-                          placeholder="votre@email.com"
+                          type="text"
+                          placeholder="pseudo ou email@exemple.com"
                           className="pl-9 h-11"
                           data-testid="input-email"
                         />
@@ -292,14 +292,14 @@ export default function LoginPage() {
             <div className="grid grid-cols-2 gap-2">
               {DEMO_ACCOUNTS.map(a => (
                 <button
-                  key={a.email}
-                  onClick={() => fillDemo(a.email)}
+                  key={a.identifiant}
+                  onClick={() => fillDemo(a.identifiant)}
                   className="flex flex-col items-start gap-0.5 p-3 rounded-xl border border-border bg-card hover:bg-muted hover:border-primary/30 transition-all text-left group"
                   data-testid={`button-demo-${a.label.toLowerCase().replace(" ", "-")}`}
                 >
                   <span className={cn("text-xs font-semibold", a.color)}>{a.label}</span>
                   <span className="text-[10px] text-muted-foreground truncate w-full group-hover:text-foreground transition-colors">
-                    {a.email}
+                    {a.identifiant}
                   </span>
                 </button>
               ))}

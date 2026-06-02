@@ -1,10 +1,11 @@
-import { useApp } from "@/contexts/AppContext";
+import { useState, useEffect } from "react";
 import ClientLayout from "@/layouts/ClientLayout";
 import { Link } from "wouter";
 import { DollarSign, Gift, Clock, Play, Star, Zap, ChevronRight, Ticket } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { format } from "date-fns";
 import { fr } from "date-fns/locale";
+import api from "@/services/api";
 
 function formatTime(secs: number) {
   const m = Math.floor(secs / 60);
@@ -12,17 +13,33 @@ function formatTime(secs: number) {
   return `${String(m).padStart(2, "0")}:${String(s).padStart(2, "0")}`;
 }
 
+interface HomeData {
+  pseudo: string;
+  credits: { solde: number; categorie: { id: number; nom: string } }[];
+  bonus: { solde: number; disponible: boolean } | null;
+  activeSession: { id: number; tempsRestant: number; estBonus: boolean; duree: { libelle: string; secondes: number; prix: number } } | null;
+  recentSessions: { id: number; debut: string; estBonus: boolean; duree: { libelle: string; prix: number }; poste: { nom: string } }[];
+}
+
 export default function ClientHome() {
-  const { currentUser, clients, sessions } = useApp();
-  const client = clients.find(c => c.pseudo === currentUser?.pseudo && c.salleId === currentUser?.salleId);
-  const activeSession = sessions.find(s => s.clientId === client?.id && s.actif);
+  const [data, setData] = useState<HomeData | null>(null);
+  const [tempsRestant, setTempsRestant] = useState(0);
 
-  const recentSessions = sessions
-    .filter(s => s.clientId === client?.id && !s.actif)
-    .slice(-5)
-    .reverse();
+  useEffect(() => {
+    api.get('/client/home').then(r => {
+      setData(r.data);
+      setTempsRestant(r.data.activeSession?.tempsRestant ?? 0);
+    }).catch(console.error);
+  }, []);
 
-  const pct = activeSession ? (activeSession.secondsRemaining / (activeSession.dureeMinutes * 60)) * 100 : 0;
+  useEffect(() => {
+    if (!data?.activeSession) return;
+    const interval = setInterval(() => setTempsRestant(t => Math.max(0, t - 1)), 1000);
+    return () => clearInterval(interval);
+  }, [data?.activeSession]);
+
+  const activeSession = data?.activeSession ?? null;
+  const pct = activeSession ? (tempsRestant / activeSession.duree.secondes) * 100 : 0;
   const urgentColor = activeSession && pct < 10 ? "text-destructive" : activeSession && pct < 25 ? "text-yellow-400" : "text-green-400";
 
   return (
@@ -31,7 +48,7 @@ export default function ClientHome() {
         {/* Header */}
         <div>
           <p className="text-sm text-muted-foreground">Bonjour 👋</p>
-          <h1 className="text-2xl font-bold text-foreground">{client?.pseudo ?? currentUser?.pseudo ?? "Client"}</h1>
+          <h1 className="text-2xl font-bold text-foreground">{data?.pseudo ?? "Client"}</h1>
         </div>
 
         {/* Balances */}
@@ -40,14 +57,16 @@ export default function ClientHome() {
             <div className="flex items-center gap-1.5 text-xs text-muted-foreground mb-1.5">
               <DollarSign size={11} /> Crédit
             </div>
-            <div className="text-2xl font-bold text-foreground">{(client?.creditMonetaire ?? 0).toLocaleString()}</div>
-            <div className="text-xs text-muted-foreground">FCFA</div>
+            <div className="text-2xl font-bold text-foreground">
+              {(data?.credits.reduce((acc, c) => acc + c.solde, 0) ?? 0)} s
+            </div>
+            <div className="text-xs text-muted-foreground">secondes crédit</div>
           </div>
           <div className="bg-gradient-to-br from-orange-500/20 to-orange-500/5 border border-orange-500/30 rounded-2xl p-4">
             <div className="flex items-center gap-1.5 text-xs text-muted-foreground mb-1.5">
               <Gift size={11} /> Bonus
             </div>
-            <div className="text-2xl font-bold text-foreground">{client?.bonusTempsDispo ?? 0}</div>
+            <div className="text-2xl font-bold text-foreground">{Math.floor((data?.bonus?.solde ?? 0) / 60)}</div>
             <div className="text-xs text-muted-foreground">minutes offertes</div>
           </div>
         </div>
@@ -61,10 +80,10 @@ export default function ClientHome() {
             </div>
             <div className="flex items-center justify-between mb-2">
               <div className={cn("font-mono text-4xl font-bold", urgentColor)}>
-                {formatTime(activeSession.secondsRemaining)}
+                {formatTime(tempsRestant)}
               </div>
               <div className="text-right">
-                <div className="text-sm text-foreground font-medium">{activeSession.dureeAchetee}</div>
+                <div className="text-sm text-foreground font-medium">{activeSession.duree.libelle}</div>
                 {activeSession.estBonus && <div className="text-xs text-primary">Session bonus</div>}
               </div>
             </div>
@@ -116,7 +135,7 @@ export default function ClientHome() {
         </div>
 
         {/* Recent sessions */}
-        {recentSessions.length > 0 && (
+          {(data?.recentSessions ?? []).length > 0 && (
           <div className="bg-card border border-border rounded-2xl overflow-hidden">
             <div className="flex items-center justify-between px-4 py-3 border-b border-border">
               <span className="text-sm font-semibold text-foreground">Sessions récentes</span>
@@ -125,17 +144,17 @@ export default function ClientHome() {
               </Link>
             </div>
             <div className="divide-y divide-border">
-              {recentSessions.map(s => (
+              {(data?.recentSessions ?? []).map(s => (
                 <div key={s.id} className="flex items-center justify-between px-4 py-3">
                   <div className="flex items-center gap-2">
                     <Clock size={13} className="text-muted-foreground" />
                     <div>
-                      <div className="text-sm text-foreground">{s.dureeAchetee}</div>
-                      <div className="text-xs text-muted-foreground">{format(new Date(s.heureDebut), "dd MMM · HH:mm", { locale: fr })}</div>
+                      <div className="text-sm text-foreground">{s.duree.libelle}</div>
+                      <div className="text-xs text-muted-foreground">{format(new Date(s.debut), "dd MMM · HH:mm", { locale: fr })}</div>
                     </div>
                   </div>
                   <div className="text-right">
-                    <div className="text-sm font-semibold text-primary">{s.montant.toLocaleString()} F</div>
+                    <div className="text-sm font-semibold text-primary">{s.duree.prix.toLocaleString()} F</div>
                     {s.estBonus && <div className="text-xs text-orange-400">Bonus</div>}
                   </div>
                 </div>

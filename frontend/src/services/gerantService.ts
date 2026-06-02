@@ -100,7 +100,7 @@ const gerantService = {
     return res.data;
   },
 
-  createClient: async (data: { pseudo: string; telephone: string; estEnfant?: boolean; codeParental?: string }): Promise<{ id: number; pseudo: string; telephone: string; motDePasseTemporaire: string }> => {
+  createClient: async (data: { pseudo: string; motDePasse: string; estEnfant?: boolean; codeParental?: string }): Promise<{ id: number; pseudo: string; telephone: string }> => {
     const res = await api.post('/gerant/clients', data);
     return res.data;
   },
@@ -155,17 +155,17 @@ const gerantService = {
   // ─── CATEGORIES & DUREES (via admin routes) ───────────────────────────────
 
   getCategories: async (): Promise<Categorie[]> => {
-    const res = await api.get('/admin/categories');
+    const res = await api.get('/gerant/categories');
     return res.data;
   },
 
   getDurees: async (categorieId: number): Promise<Duree[]> => {
-    const res = await api.get(`/admin/categories/${categorieId}/durees`);
+    const res = await api.get(`/gerant/categories/${categorieId}/durees`);
     return res.data;
   },
 
   getPostesDisponibles: async (): Promise<Poste[]> => {
-    const res = await api.get('/admin/postes');
+    const res = await api.get('/gerant/postes');
     return res.data;
   },
 

@@ -109,7 +109,7 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
   const login = useCallback(async (email: string, password: string): Promise<{ success: boolean; licenceRequired: boolean }> => {
     try {
       const response = await axiosInstance.post('/auth/login', {
-        email,
+        identifiant: email,
         motDePasse: password,
       });
 

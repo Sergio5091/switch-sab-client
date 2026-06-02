@@ -1,10 +1,11 @@
 import { Router } from 'express'
 import { verifyJwt, requireRole } from '../../middlewares/auth.middleware.js'
+import { getHome } from './client.controller.js'
 
 const router = Router()
 
 router.use(verifyJwt, requireRole('CLIENT'))
 
-// TODO Phase 4 — recharges, coupons, sessions, bonus, promo
+router.get('/home', getHome)
 
 export default router

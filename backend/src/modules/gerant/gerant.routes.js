@@ -27,6 +27,10 @@ import {
   rapportPeriode
 } from './rapport.controller.js'
 
+import { listerCategories } from '../admin/categories.controller.js'
+import { listerPostes } from '../admin/postes.controller.js'
+import { listerDurees } from '../admin/durees.controller.js'
+
 const router = Router()
 
 // Appliquer middlewares à toutes les routes gérant
@@ -70,6 +74,12 @@ router.get('/sessions/:id', detailSession)
 
 // POST /gerant/sessions/:id/arreter
 router.post('/sessions/:id/arreter', arreterSession)
+
+// ─── CATALOGUE (lecture seule) ────────────────────────────────────────────
+
+router.get('/categories', listerCategories)
+router.get('/categories/:id/durees', listerDurees)
+router.get('/postes', listerPostes)
 
 // ─── RAPPORTS ─────────────────────────────────────────────────────────────
 
