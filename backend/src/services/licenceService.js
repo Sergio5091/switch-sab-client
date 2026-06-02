@@ -6,23 +6,28 @@ import logger from '../config/logger.js'
 
 // ─── Chargement de la clé publique ────────────────────────────────────────────
 
+let publicKeyCache = null
+
 const getPublicKey = () => {
+  if (publicKeyCache) return publicKeyCache
+  
   const keyPath = path.resolve(process.env.LICENCE_PUBLIC_KEY_PATH || './keys/public-key.pem')
   if (!existsSync(keyPath)) {
-    throw new Error(`Clé publique introuvable : ${keyPath}`)
+    return null  // Retourne null au lieu de throw
   }
-  return readFileSync(keyPath, 'utf-8')
+  publicKeyCache = readFileSync(keyPath, 'utf-8')
+  return publicKeyCache
 }
 
 // ─── Vérification signature RSA ───────────────────────────────────────────────
 
-/**
- * Vérifie la signature RSA d'un payload de licence.
- * Le Projet 1 signe : SHA256(licenceId + salleId + machineId + issuedAt + expiresAt)
- */
 export const verifySignature = (payload, signature) => {
+  const publicKey = getPublicKey()
+  if (!publicKey) {
+    return null  // Indique "pas de clé" au lieu de false
+  }
+  
   try {
-    const publicKey = getPublicKey()
     const data = `${payload.licenceId}|${payload.salleId}|${payload.machineId}|${payload.issuedAt}|${payload.expiresAt}`
     const verify = createVerify('SHA256')
     verify.update(data)
@@ -43,25 +48,29 @@ export const verifierLicence = (licence) => {
   }
 
   // 2. Signature RSA (si clé publique disponible)
-  try {
-    const payload = {
-      licenceId: licence.licenceId,
-      salleId:   licence.salleId,
-      machineId: licence.machineId,
-      issuedAt:  licence.issuedAt instanceof Date
-        ? licence.issuedAt.toISOString()
-        : licence.issuedAt,
-      expiresAt: licence.expiresAt instanceof Date
-        ? licence.expiresAt.toISOString()
-        : licence.expiresAt,
-    }
-    const signatureValide = verifySignature(payload, licence.signature)
-    if (!signatureValide) {
-      return { valide: false, raison: 'Signature invalide' }
-    }
-  } catch (err) {
+  const publicKey = getPublicKey()
+  if (!publicKey) {
     // Pas de clé publique → mode dev, on laisse passer avec un warning
     logger.warn('Clé publique absente — vérification signature ignorée (mode dev)')
+    const msRestants = new Date(licence.expiresAt) - new Date()
+    const joursRestants = Math.ceil(msRestants / (1000 * 60 * 60 * 24))
+    return { valide: true, joursRestants }
+  }
+
+  const payload = {
+    licenceId: licence.licenceId,
+    salleId:   licence.salleId,
+    machineId: licence.machineId,
+    issuedAt:  licence.issuedAt instanceof Date
+      ? licence.issuedAt.toISOString()
+      : licence.issuedAt,
+    expiresAt: licence.expiresAt instanceof Date
+      ? licence.expiresAt.toISOString()
+      : licence.expiresAt,
+  }
+  const signatureValide = verifySignature(payload, licence.signature)
+  if (signatureValide === false) {
+    return { valide: false, raison: 'Signature invalide' }
   }
 
   // 3. Jours restants

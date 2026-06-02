@@ -1,4 +1,4 @@
-import { useApp } from "@/contexts/AppContext";
+import { useState, useEffect } from "react";
 import AdminLayout from "@/layouts/AdminLayout";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -8,34 +8,50 @@ import { zodResolver } from "@hookform/resolvers/zod";
 import { z } from "zod";
 import { Zap, Users, Info } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
+import adminService from "@/services/adminService";
 
 const schema = z.object({
-  bonusParrainPct: z.coerce.number().min(0).max(100),
-  reductionInvitePct: z.coerce.number().min(0).max(100),
+  bonusParrain: z.coerce.number().min(0).max(100),
+  reductionInvite: z.coerce.number().min(0).max(100),
 });
 type FormValues = z.infer<typeof schema>;
 
 export default function AdminPromo() {
-  const { currentUser, promoConfigs, updatePromoConfig } = useApp();
   const { toast } = useToast();
-  const salleId = currentUser?.salleId ?? 1;
-  const config = promoConfigs.find(c => c.salleId === salleId);
+  const [config, setConfig] = useState({ bonusParrain: 10, reductionInvite: 5 });
+
+  useEffect(() => {
+    adminService.getPromoConfig()
+      .then(setConfig)
+      .catch(() => {
+        // Pas encore créée, valeurs par défaut
+      });
+  }, []);
 
   const form = useForm<FormValues>({
     resolver: zodResolver(schema),
-    defaultValues: {
-      bonusParrainPct: config?.bonusParrainPct ?? 10,
-      reductionInvitePct: config?.reductionInvitePct ?? 5,
-    },
+    defaultValues: config,
   });
 
-  function onSubmit(values: FormValues) {
-    updatePromoConfig(salleId, values);
-    toast({ title: "Configuration parrainage sauvegardée" });
+  useEffect(() => {
+    form.reset(config);
+  }, [config]);
+
+  async function onSubmit(values: FormValues) {
+    try {
+      const updated = await adminService.updatePromoConfig({
+        bonusParrain: values.bonusParrain,
+        reductionInvite: values.reductionInvite,
+      });
+      setConfig(updated);
+      toast({ title: "Configuration parrainage sauvegardée" });
+    } catch (err: any) {
+      toast({ title: err.response?.data?.message ?? "Erreur", variant: "destructive" });
+    }
   }
 
-  const parrain = form.watch("bonusParrainPct");
-  const invite = form.watch("reductionInvitePct");
+  const parrain = form.watch("bonusParrain");
+  const invite = form.watch("reductionInvite");
 
   return (
     <AdminLayout>
@@ -62,7 +78,7 @@ export default function AdminPromo() {
 
           <Form {...form}>
             <form onSubmit={form.handleSubmit(onSubmit)} className="space-y-4">
-              <FormField control={form.control} name="bonusParrainPct" render={({ field }) => (
+              <FormField control={form.control} name="bonusParrain" render={({ field }) => (
                 <FormItem>
                   <FormLabel className="flex items-center gap-2"><Users size={13} /> Bonus parrain (%)</FormLabel>
                   <FormControl><Input {...field} type="number" min={0} max={100} data-testid="input-bonus-parrain" /></FormControl>
@@ -71,7 +87,7 @@ export default function AdminPromo() {
                 </FormItem>
               )} />
 
-              <FormField control={form.control} name="reductionInvitePct" render={({ field }) => (
+              <FormField control={form.control} name="reductionInvite" render={({ field }) => (
                 <FormItem>
                   <FormLabel className="flex items-center gap-2"><Zap size={13} /> Réduction invité (%)</FormLabel>
                   <FormControl><Input {...field} type="number" min={0} max={100} data-testid="input-reduction-invite" /></FormControl>

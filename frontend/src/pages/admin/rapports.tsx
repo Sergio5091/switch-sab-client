@@ -1,49 +1,93 @@
-import { useState } from "react";
-import { useApp } from "@/contexts/AppContext";
+import { useState, useEffect, useCallback } from "react";
 import AdminLayout from "@/layouts/AdminLayout";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { Download, BarChart2, Gift } from "lucide-react";
+import { Download, Gift } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
 import { Badge } from "@/components/ui/badge";
 import { cn } from "@/lib/utils";
 import { format } from "date-fns";
 import { fr } from "date-fns/locale";
+import api from "@/services/api";
+
+interface Session {
+  id: number;
+  debut: string;
+  fin?: string;
+  tempsRestant: number;
+  statut: string;
+  estBonus: boolean;
+  client: { id: number; pseudo: string };
+  gerant: { id: number; nom?: string; prenom?: string };
+  poste: { id: number; nom: string };
+  duree: { id: number; libelle: string; secondes: number; prix: number };
+}
+
+interface Gerant { id: number; nom?: string; prenom?: string }
+interface Poste  { id: number; nom: string }
 
 export default function AdminRapports() {
-  const { currentUser, sessions, clients, postes, utilisateurs } = useApp();
   const { toast } = useToast();
-  const salleId = currentUser?.salleId ?? 1;
+  const [sessions, setSessions] = useState<Session[]>([]);
+  const [total, setTotal] = useState(0);
+  const [gerants, setGerants] = useState<Gerant[]>([]);
+  const [postes, setPostes] = useState<Poste[]>([]);
+  const [loading, setLoading] = useState(false);
 
   const [filtreGerant, setFiltreGerant] = useState("all");
   const [filtrePoste, setFiltrePoste] = useState("all");
   const [dateDebut, setDateDebut] = useState("");
   const [dateFin, setDateFin] = useState("");
 
-  const myGerants = utilisateurs.filter(u => u.role === "gerant" && u.salleId === salleId);
-  const myPostes = postes.filter(p => p.salleId === salleId);
+  // Charger gérants et postes une seule fois au montage
+  useEffect(() => {
+    api.get('/rapports?_init=1').then(res => {
+      setGerants(res.data.gerants ?? []);
+      setPostes(res.data.postes ?? []);
+      setSessions(res.data.sessions ?? []);
+      setTotal(res.data.total ?? 0);
+    }).catch(() => toast({ title: "Erreur chargement rapports", variant: "destructive" }));
+  }, []);
 
-  let filtered = sessions.filter(s => s.salleId === salleId);
-  if (filtreGerant !== "all") filtered = filtered.filter(s => s.gerantId === Number(filtreGerant));
-  if (filtrePoste !== "all") filtered = filtered.filter(s => s.posteId === Number(filtrePoste));
-  if (dateDebut) filtered = filtered.filter(s => new Date(s.heureDebut) >= new Date(dateDebut));
-  if (dateFin) filtered = filtered.filter(s => new Date(s.heureDebut) <= new Date(dateFin + "T23:59:59"));
+  const fetchSessions = useCallback(async () => {
+    setLoading(true);
+    const params = new URLSearchParams();
+    if (filtreGerant !== "all") params.set("gerantId", filtreGerant);
+    if (filtrePoste  !== "all") params.set("posteId",  filtrePoste);
+    if (dateDebut) params.set("debut", dateDebut);
+    if (dateFin)   params.set("fin",   dateFin);
 
-  const total = filtered.reduce((sum, s) => sum + s.montant, 0);
+    try {
+      const res = await api.get(`/rapports?${params.toString()}`);
+      setSessions(res.data.sessions ?? []);
+      setTotal(res.data.total ?? 0);
+      // Mettre à jour les listes filtres seulement si elles arrivent non vides
+      if (res.data.gerants?.length) setGerants(res.data.gerants);
+      if (res.data.postes?.length)  setPostes(res.data.postes);
+    } catch (err: any) {
+      toast({ title: err.response?.data?.message ?? "Erreur chargement rapports", variant: "destructive" });
+    } finally {
+      setLoading(false);
+    }
+  }, [filtreGerant, filtrePoste, dateDebut, dateFin]);
+
+  // Re-fetch uniquement quand les filtres changent (pas au montage initial)
+  useEffect(() => {
+    if (filtreGerant === "all" && filtrePoste === "all" && !dateDebut && !dateFin) return;
+    fetchSessions();
+  }, [filtreGerant, filtrePoste, dateDebut, dateFin]);
 
   function handleExport() {
-    const rows = filtered.map(s => {
-      const client = clients.find(c => c.id === s.clientId);
-      const poste = myPostes.find(p => p.id === s.posteId);
-      const gerant = myGerants.find(g => g.id === s.gerantId);
-      return `${client?.pseudo ?? ""},${s.heureDebut},${s.heureFin ?? ""},${s.dureeAchetee},${s.montant},${poste?.numero ?? ""},${gerant?.prenom ?? ""},${s.estBonus ? "Bonus" : "Normal"}`;
-    });
+    const rows = sessions.map(s =>
+      `${s.client.pseudo},${s.debut},${s.fin ?? ""},${s.duree.libelle},${s.duree.prix},${s.poste.nom},${s.gerant.prenom ?? ""} ${s.gerant.nom ?? ""},${s.estBonus ? "Bonus" : "Normal"}`
+    );
     const csv = ["Client,Début,Fin,Durée,Montant,Poste,Gérant,Type", ...rows].join("\n");
     const blob = new Blob([csv], { type: "text/csv" });
     const url = URL.createObjectURL(blob);
     const a = document.createElement("a");
     a.href = url; a.download = "rapport_switch_sab.csv"; a.click();
+    URL.revokeObjectURL(url);
     toast({ title: "Export CSV téléchargé" });
   }
 
@@ -53,37 +97,33 @@ export default function AdminRapports() {
         <div className="flex items-center justify-between flex-wrap gap-3">
           <div>
             <h1 className="text-xl font-bold text-foreground">Rapports</h1>
-            <p className="text-sm text-muted-foreground mt-0.5">{filtered.length} session(s)</p>
+            <p className="text-sm text-muted-foreground mt-0.5">{sessions.length} session(s) · {total.toLocaleString()} F</p>
           </div>
           <Button variant="outline" onClick={handleExport} className="gap-1.5" data-testid="button-export-csv">
             <Download size={15} /> Exporter CSV
           </Button>
         </div>
 
-        {/* Filters */}
+        {/* Filtres */}
         <div className="bg-card border border-border rounded-xl p-4">
           <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
             <div className="space-y-1">
               <label className="text-xs text-muted-foreground">Gérant</label>
               <Select value={filtreGerant} onValueChange={setFiltreGerant}>
-                <SelectTrigger className="h-8 text-xs" data-testid="select-filtre-gerant">
-                  <SelectValue />
-                </SelectTrigger>
+                <SelectTrigger className="h-8 text-xs" data-testid="select-filtre-gerant"><SelectValue /></SelectTrigger>
                 <SelectContent>
-                  <SelectItem value="all">Tous</SelectItem>
-                  {myGerants.map(g => <SelectItem key={g.id} value={String(g.id)}>{g.prenom} {g.nom}</SelectItem>)}
+                  <SelectItem value="all">Tous les gérants</SelectItem>
+                  {gerants.map(g => <SelectItem key={g.id} value={String(g.id)}>{g.prenom} {g.nom}</SelectItem>)}
                 </SelectContent>
               </Select>
             </div>
             <div className="space-y-1">
               <label className="text-xs text-muted-foreground">Poste</label>
               <Select value={filtrePoste} onValueChange={setFiltrePoste}>
-                <SelectTrigger className="h-8 text-xs" data-testid="select-filtre-poste">
-                  <SelectValue />
-                </SelectTrigger>
+                <SelectTrigger className="h-8 text-xs" data-testid="select-filtre-poste"><SelectValue /></SelectTrigger>
                 <SelectContent>
-                  <SelectItem value="all">Tous</SelectItem>
-                  {myPostes.map(p => <SelectItem key={p.id} value={String(p.id)}>Poste {p.numero}</SelectItem>)}
+                  <SelectItem value="all">Tous les postes</SelectItem>
+                  {postes.map(p => <SelectItem key={p.id} value={String(p.id)}>{p.nom}</SelectItem>)}
                 </SelectContent>
               </Select>
             </div>
@@ -96,6 +136,18 @@ export default function AdminRapports() {
               <Input type="date" value={dateFin} onChange={e => setDateFin(e.target.value)} className="h-8 text-xs" data-testid="input-date-fin" />
             </div>
           </div>
+          {(filtreGerant !== "all" || filtrePoste !== "all" || dateDebut || dateFin) && (
+            <div className="mt-3 flex justify-end">
+              <Button variant="ghost" size="sm" className="text-xs h-7" onClick={() => {
+                setFiltreGerant("all");
+                setFiltrePoste("all");
+                setDateDebut("");
+                setDateFin("");
+              }}>
+                Réinitialiser les filtres
+              </Button>
+            </div>
+          )}
         </div>
 
         {/* Table */}
@@ -110,29 +162,28 @@ export default function AdminRapports() {
                 </tr>
               </thead>
               <tbody className="divide-y divide-border">
-                {filtered.slice().reverse().map(s => {
-                  const client = clients.find(c => c.id === s.clientId);
-                  const poste = myPostes.find(p => p.id === s.posteId);
-                  const gerant = myGerants.find(g => g.id === s.gerantId);
-                  return (
-                    <tr key={s.id} className={cn("hover:bg-muted/20 transition-colors", s.estBonus && "bg-primary/5")} data-testid={`row-session-${s.id}`}>
-                      <td className="px-4 py-3 font-medium text-foreground">{client?.pseudo ?? "—"}</td>
-                      <td className="px-4 py-3 text-xs text-muted-foreground whitespace-nowrap">
-                        {format(new Date(s.heureDebut), "dd MMM · HH:mm", { locale: fr })}
-                      </td>
-                      <td className="px-4 py-3 text-xs">{s.dureeAchetee}</td>
-                      <td className="px-4 py-3 font-semibold text-primary">{s.montant.toLocaleString()} F</td>
-                      <td className="px-4 py-3 text-xs">P{poste?.numero ?? "?"}</td>
-                      <td className="px-4 py-3 text-xs text-muted-foreground">{gerant?.prenom ?? "—"}</td>
-                      <td className="px-4 py-3">
-                        {s.estBonus
-                          ? <Badge className="bg-primary/10 text-primary border-primary/20 text-xs gap-1"><Gift size={9} /> Bonus</Badge>
-                          : <Badge className="bg-muted text-muted-foreground text-xs">Normal</Badge>
-                        }
-                      </td>
-                    </tr>
-                  );
-                })}
+                {loading ? (
+                  <tr><td colSpan={7} className="px-4 py-8 text-center text-muted-foreground text-sm">Chargement…</td></tr>
+                ) : sessions.length === 0 ? (
+                  <tr><td colSpan={7} className="px-4 py-8 text-center text-muted-foreground text-sm">Aucune session trouvée</td></tr>
+                ) : sessions.map(s => (
+                  <tr key={s.id} className={cn("hover:bg-muted/20 transition-colors", s.estBonus && "bg-primary/5")} data-testid={`row-session-${s.id}`}>
+                    <td className="px-4 py-3 font-medium text-foreground">{s.client.pseudo}</td>
+                    <td className="px-4 py-3 text-xs text-muted-foreground whitespace-nowrap">
+                      {format(new Date(s.debut), "dd MMM · HH:mm", { locale: fr })}
+                    </td>
+                    <td className="px-4 py-3 text-xs">{s.duree.libelle}</td>
+                    <td className="px-4 py-3 font-semibold text-primary">{s.duree.prix.toLocaleString()} F</td>
+                    <td className="px-4 py-3 text-xs">{s.poste.nom}</td>
+                    <td className="px-4 py-3 text-xs text-muted-foreground">{s.gerant.prenom} {s.gerant.nom}</td>
+                    <td className="px-4 py-3">
+                      {s.estBonus
+                        ? <Badge className="bg-primary/10 text-primary border-primary/20 text-xs gap-1"><Gift size={9} /> Bonus</Badge>
+                        : <Badge className="bg-muted text-muted-foreground text-xs">Normal</Badge>
+                      }
+                    </td>
+                  </tr>
+                ))}
               </tbody>
               <tfoot>
                 <tr className="border-t-2 border-border bg-muted/20">

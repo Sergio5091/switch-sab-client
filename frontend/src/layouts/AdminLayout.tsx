@@ -107,11 +107,11 @@ export default function AdminLayout({ children }: { children: React.ReactNode })
             const active = location.startsWith(item.href);
             return (
               <Link key={item.href} href={item.href}>
-                <a
+                <div
                   data-testid={`nav-${item.href.split("/").pop()}`}
                   onClick={() => setOpen(false)}
                   className={cn(
-                    "flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm font-medium mb-0.5 transition-colors",
+                    "flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm font-medium mb-0.5 transition-colors cursor-pointer",
                     active
                       ? "bg-primary/10 text-primary border border-primary/20"
                       : "text-sidebar-foreground hover:bg-sidebar-accent hover:text-foreground"
@@ -120,7 +120,7 @@ export default function AdminLayout({ children }: { children: React.ReactNode })
                   <item.icon size={16} className={active ? "text-primary" : "text-muted-foreground"} />
                   {item.label}
                   {active && <ChevronRight size={14} className="ml-auto text-primary" />}
-                </a>
+                </div>
               </Link>
             );
           })}

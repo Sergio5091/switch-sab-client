@@ -65,16 +65,16 @@ export default function ClientLayout({ children }: { children: React.ReactNode }
             const active = location.startsWith(tab.href);
             return (
               <Link key={tab.href} href={tab.href}>
-                <a
+                <div
                   data-testid={`tab-${tab.href.split("/").pop()}`}
                   className={cn(
-                    "flex-1 flex flex-col items-center gap-1 py-2.5 px-1 transition-colors min-w-0",
+                    "flex-1 flex flex-col items-center gap-1 py-2.5 px-1 transition-colors min-w-0 cursor-pointer",
                     active ? "text-primary" : "text-muted-foreground"
                   )}
                 >
                   <tab.icon size={18} />
                   <span className="text-[10px] font-medium truncate">{tab.label}</span>
-                </a>
+                </div>
               </Link>
             );
           })}

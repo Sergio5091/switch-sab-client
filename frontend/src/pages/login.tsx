@@ -166,6 +166,12 @@ export default function LoginPage() {
           setLocation("/admin/licence");
         } else if (result.success) {
           toast({ title: "Connexion réussie" });
+          // Redirection selon le rôle (currentUser est déjà mis à jour dans login())
+          const user = JSON.parse(localStorage.getItem("switch_sab_user") || "{}");
+          const dest = user.role === "admin" ? "/admin/dashboard"
+            : user.role === "gerant" ? "/gerant/dashboard"
+            : "/client/home";
+          setLocation(dest);
         }
       })
       .catch((err) => {

@@ -39,14 +39,26 @@ export const getStatut = async (req, res) => {
 }
 
 // ─── POST /licence/activer ────────────────────────────────────────────────────
-// Body attendu : { "licenceCode": "XXXX-XXXX-XXXX" }
-// Le code est envoyé au serveur Super Admin pour validation et récupération des données signées
+// Body attendu : le JSON signé généré par le Super Admin
+// { licenceId, salleId, machineId, issuedAt, expiresAt, signature }
 
 export const activer = async (req, res) => {
-  const { licenceCode } = req.body
+  const { licenceId, salleId, machineId, issuedAt, expiresAt, signature } = req.body
 
-  if (!licenceCode) {
-    return res.status(400).json({ message: 'Code de licence requis' })
+  if (!licenceId || !salleId || !machineId || !issuedAt || !expiresAt || !signature) {
+    return res.status(400).json({ message: 'JSON de licence incomplet. Champs requis : licenceId, salleId, machineId, issuedAt, expiresAt, signature' })
+  }
+
+  // Vérifier que le machineId correspond à cette machine
+  const currentMachineId = getMachineId()
+  if (machineId !== currentMachineId) {
+    return res.status(403).json({ message: `Cette licence est liée à une autre machine (attendu: ${currentMachineId})` })
+  }
+
+  // Vérifier la signature RSA
+  const resultat = verifierLicence({ licenceId, salleId, machineId, issuedAt, expiresAt, signature, status: 'ACTIVE' })
+  if (!resultat.valide) {
+    return res.status(400).json({ message: `Licence invalide : ${resultat.raison}` })
   }
 
   try {
@@ -56,34 +68,27 @@ export const activer = async (req, res) => {
       data:  { status: 'REMPLACEE' }
     })
 
-    // Enregistrer une nouvelle licence
-    const machineId = getMachineId()
-    const issuedAt = new Date()
-    const expiresAt = new Date()
-    expiresAt.setFullYear(expiresAt.getFullYear() + 1)
-
     const licence = await prisma.licenceLocale.create({
       data: {
-        licenceId: licenceCode,
-        salleId:   1,
+        licenceId,
+        salleId:   Number(salleId),
         machineId,
-        issuedAt,
-        expiresAt,
-        signature: 'activated',
+        issuedAt:  new Date(issuedAt),
+        expiresAt: new Date(expiresAt),
+        signature,
         status:    'ACTIVE',
       }
     })
 
-    // Recharger l'état du middleware licence
     await reloadLicence()
 
-    logger.info(`Licence activée : ${licenceCode}`)
+    logger.info(`Licence activée : ${licenceId}`)
 
     return res.status(201).json({
-      message:      'Licence activée avec succès',
-      licenceId:    licence.licenceId,
-      expiresAt:    licence.expiresAt,
-      joursRestants: Math.ceil((new Date(expiresAt) - new Date()) / (1000 * 60 * 60 * 24))
+      message:       'Licence activée avec succès',
+      licenceId:     licence.licenceId,
+      expiresAt:     licence.expiresAt,
+      joursRestants: resultat.joursRestants,
     })
   } catch (err) {
     logger.error('[licence/activer]', err)

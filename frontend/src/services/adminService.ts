@@ -1,328 +1,233 @@
 import api from './api';
 
-export interface Category {
-  id: string;
-  name: string;
-  description?: string;
+export interface Categorie {
+  id: number;
+  nom: string;
+  salleId: number;
 }
 
 export interface Duree {
-  id: string;
-  categoryId: string;
-  duration: number; // en heures
-  price: number;
+  id: number;
+  libelle: string;
+  secondes: number;
+  prix: number;
+  categorieId: number;
 }
 
 export interface Poste {
-  id: string;
-  name: string;
-  description?: string;
+  id: number;
+  nom: string;
+  image?: string;
+  statut: 'LIBRE' | 'OCCUPE';
+  categorieId: number;
 }
 
 export interface Gerant {
-  id: string;
-  email: string;
-  firstName: string;
-  lastName: string;
-  phone?: string;
+  id: number;
+  pseudo: string;
+  email?: string;
+  nom?: string;
+  prenom?: string;
+  telephone: string;
+  role: string;
+  salleId?: number;
+  active: boolean;
+  telUrgence?: string;
 }
 
-export interface Bonus {
-  id: string;
-  name: string;
-  percentage: number;
-  description?: string;
+export interface ConfigBonus {
+  id: number;
+  salleId: number;
+  ratioSecondes: number;
+  seuilDeblocage: number;
+  validitejours: number;
+  reductionInvite: number;
+  bonusParrain: number;
+}
+
+export interface PromoConfig {
+  salleId: number;
+  reductionInvite: number;
+  bonusParrain: number;
 }
 
 export interface Coupon {
-  id: string;
+  id: number;
   code: string;
-  discount: number;
-  expiresAt?: string;
+  valeur: number;
+  utilise: boolean;
+  salleId: number;
+  createdAt: string;
 }
 
 export interface Promotion {
-  id: string;
-  title: string;
-  description?: string;
-  discount: number;
-  startDate: string;
-  endDate: string;
+  id: number;
+  titre: string;
+  message?: string;
+  image?: string;
+  salleId: number;
+  createdAt: string;
+  envoyee: boolean;
 }
 
 const adminService = {
-  // ─── CATEGORIES ───────────────────────────────────
-  
-  /**
-   * Récupérer toutes les catégories
-   */
-  getCategories: async (): Promise<Category[]> => {
-    const response = await api.get('/admin/categories');
-    return response.data.categories;
+  // ─── DASHBOARD ───────────────────────────────────
+
+  getDashboard: async (): Promise<{
+    stats: {
+      sessionsAujourdhui: number;
+      revenuJour: number;
+      postes: { total: number; actifs: number };
+      clients: number;
+    };
+    categories: { id: number; nom: string; nbPostes: number; nbActifs: number }[];
+    gerantActivity: { gerant: { id: number; nom?: string; prenom?: string }; nbSessions: number; revenu: number }[];
+  }> => {
+    const res = await api.get('/admin/dashboard');
+    return res.data;
   },
 
-  /**
-   * Créer une catégorie
-   */
-  createCategory: async (data: Omit<Category, 'id'>): Promise<Category> => {
-    const response = await api.post('/admin/categories', data);
-    return response.data.category;
+  // ─── CATEGORIES ───────────────────────────────────────────────────────────
+
+  getCategories: async (): Promise<Categorie[]> => {
+    const res = await api.get('/admin/categories');
+    return res.data;
   },
 
-  /**
-   * Mettre à jour une catégorie
-   */
-  updateCategory: async (id: string, data: Partial<Category>): Promise<Category> => {
-    const response = await api.put(`/admin/categories/${id}`, data);
-    return response.data.category;
+  createCategorie: async (data: { nom: string }): Promise<Categorie> => {
+    const res = await api.post('/admin/categories', data);
+    return res.data;
   },
 
-  /**
-   * Supprimer une catégorie
-   */
-  deleteCategory: async (id: string): Promise<void> => {
+  updateCategorie: async (id: number, data: { nom?: string }): Promise<Categorie> => {
+    const res = await api.patch(`/admin/categories/${id}`, data);
+    return res.data;
+  },
+
+  deleteCategorie: async (id: number): Promise<void> => {
     await api.delete(`/admin/categories/${id}`);
   },
 
-  // ─── DUREES ───────────────────────────────────
+  // ─── DUREES ───────────────────────────────────────────────────────────────
 
-  /**
-   * Récupérer les durées d'une catégorie
-   */
-  getDurees: async (categoryId: string): Promise<Duree[]> => {
-    const response = await api.get(`/admin/categories/${categoryId}/durees`);
-    return response.data.durees;
+  getDurees: async (categorieId: number): Promise<Duree[]> => {
+    const res = await api.get(`/admin/categories/${categorieId}/durees`);
+    return res.data;
   },
 
-  /**
-   * Créer une durée
-   */
-  createDuree: async (categoryId: string, data: Omit<Duree, 'id'>): Promise<Duree> => {
-    const response = await api.post(`/admin/categories/${categoryId}/durees`, data);
-    return response.data.duree;
+  createDuree: async (categorieId: number, data: { libelle: string; secondes: number; prix: number }): Promise<Duree> => {
+    const res = await api.post(`/admin/categories/${categorieId}/durees`, data);
+    return res.data;
   },
 
-  /**
-   * Mettre à jour une durée
-   */
-  updateDuree: async (categoryId: string, id: string, data: Partial<Duree>): Promise<Duree> => {
-    const response = await api.put(`/admin/categories/${categoryId}/durees/${id}`, data);
-    return response.data.duree;
+  updateDuree: async (id: number, data: { libelle?: string; secondes?: number; prix?: number }): Promise<Duree> => {
+    const res = await api.patch(`/admin/durees/${id}`, data);
+    return res.data;
   },
 
-  /**
-   * Supprimer une durée
-   */
-  deleteDuree: async (categoryId: string, id: string): Promise<void> => {
-    await api.delete(`/admin/categories/${categoryId}/durees/${id}`);
+  deleteDuree: async (id: number): Promise<void> => {
+    await api.delete(`/admin/durees/${id}`);
   },
 
-  // ─── POSTES ───────────────────────────────────
+  // ─── POSTES ───────────────────────────────────────────────────────────────
 
-  /**
-   * Récupérer tous les postes
-   */
   getPostes: async (): Promise<Poste[]> => {
-    const response = await api.get('/admin/postes');
-    return response.data.postes;
+    const res = await api.get('/admin/postes');
+    return res.data;
   },
 
-  /**
-   * Créer un poste
-   */
-  createPoste: async (data: Omit<Poste, 'id'>): Promise<Poste> => {
-    const response = await api.post('/admin/postes', data);
-    return response.data.poste;
+  createPoste: async (data: { nom: string; categorieId: number; image?: string }): Promise<Poste> => {
+    const res = await api.post('/admin/postes', data);
+    return res.data;
   },
 
-  /**
-   * Mettre à jour un poste
-   */
-  updatePoste: async (id: string, data: Partial<Poste>): Promise<Poste> => {
-    const response = await api.put(`/admin/postes/${id}`, data);
-    return response.data.poste;
+  updatePoste: async (id: number, data: { nom?: string; categorieId?: number; image?: string }): Promise<Poste> => {
+    const res = await api.patch(`/admin/postes/${id}`, data);
+    return res.data;
   },
 
-  /**
-   * Supprimer un poste
-   */
-  deletePoste: async (id: string): Promise<void> => {
+  deletePoste: async (id: number): Promise<void> => {
     await api.delete(`/admin/postes/${id}`);
   },
 
-  // ─── GERANTS ───────────────────────────────────
+  // ─── GERANTS ──────────────────────────────────────────────────────────────
 
-  /**
-   * Récupérer tous les gérants
-   */
   getGerants: async (): Promise<Gerant[]> => {
-    const response = await api.get('/admin/gerants');
-    return response.data.gerants;
+    const res = await api.get('/admin/gerants');
+    return res.data;
   },
 
-  /**
-   * Créer un gérant
-   */
-  createGerant: async (data: Omit<Gerant, 'id'>): Promise<Gerant> => {
-    const response = await api.post('/admin/gerants', data);
-    return response.data.gerant;
+  createGerant: async (data: { pseudo: string; telephone: string; motDePasse: string; nom?: string; prenom?: string; email?: string; telUrgence?: string }): Promise<Gerant> => {
+    const res = await api.post('/admin/gerants', data);
+    return res.data;
   },
 
-  /**
-   * Mettre à jour un gérant
-   */
-  updateGerant: async (id: string, data: Partial<Gerant>): Promise<Gerant> => {
-    const response = await api.put(`/admin/gerants/${id}`, data);
-    return response.data.gerant;
+  updateGerant: async (id: number, data: { pseudo?: string; telephone?: string; nom?: string; prenom?: string; email?: string; active?: boolean; telUrgence?: string }): Promise<Gerant> => {
+    const res = await api.patch(`/admin/gerants/${id}`, data);
+    return res.data;
   },
 
-  /**
-   * Supprimer un gérant
-   */
-  deleteGerant: async (id: string): Promise<void> => {
-    await api.delete(`/admin/gerants/${id}`);
+  // ─── CONFIG BONUS ─────────────────────────────────────────────────────────
+
+  getConfigBonus: async (): Promise<ConfigBonus> => {
+    const res = await api.get('/admin/bonus/config');
+    return res.data;
   },
 
-  // ─── BONUS ───────────────────────────────────
-
-  /**
-   * Récupérer tous les bonus
-   */
-  getBonus: async (): Promise<Bonus[]> => {
-    const response = await api.get('/admin/bonus');
-    return response.data.bonus;
+  createConfigBonus: async (data: { ratioSecondes: number; seuilDeblocage: number; validitejours?: number; reductionInvite?: number; bonusParrain?: number }): Promise<ConfigBonus> => {
+    const res = await api.post('/admin/bonus/config', data);
+    return res.data;
   },
 
-  /**
-   * Créer un bonus
-   */
-  createBonus: async (data: Omit<Bonus, 'id'>): Promise<Bonus> => {
-    const response = await api.post('/admin/bonus', data);
-    return response.data.bonus;
+  updateConfigBonus: async (data: { ratioSecondes?: number; seuilDeblocage?: number; validitejours?: number; reductionInvite?: number; bonusParrain?: number }): Promise<ConfigBonus> => {
+    const res = await api.patch('/admin/bonus/config', data);
+    return res.data;
   },
 
-  /**
-   * Mettre à jour un bonus
-   */
-  updateBonus: async (id: string, data: Partial<Bonus>): Promise<Bonus> => {
-    const response = await api.put(`/admin/bonus/${id}`, data);
-    return response.data.bonus;
+  // ─── CONFIG PROMO ─────────────────────────────────────────────────────────
+
+  getPromoConfig: async (): Promise<PromoConfig> => {
+    const res = await api.get('/admin/promo/config');
+    return res.data;
   },
 
-  /**
-   * Supprimer un bonus
-   */
-  deleteBonus: async (id: string): Promise<void> => {
-    await api.delete(`/admin/bonus/${id}`);
+  updatePromoConfig: async (data: { reductionInvite?: number; bonusParrain?: number }): Promise<PromoConfig> => {
+    const res = await api.patch('/admin/promo/config', data);
+    return res.data;
   },
 
-  // ─── PROMO ───────────────────────────────────
+  // ─── COUPONS ──────────────────────────────────────────────────────────────
 
-  /**
-   * Récupérer toutes les promos
-   */
-  getPromos: async (): Promise<Promotion[]> => {
-    const response = await api.get('/admin/promo');
-    return response.data.promos;
+  getCoupons: async (statut?: 'actif' | 'utilise'): Promise<Coupon[]> => {
+    const params = statut ? `?statut=${statut}` : '';
+    const res = await api.get(`/admin/coupons${params}`);
+    return res.data;
   },
 
-  /**
-   * Créer une promo
-   */
-  createPromo: async (data: Omit<Promotion, 'id'>): Promise<Promotion> => {
-    const response = await api.post('/admin/promo', data);
-    return response.data.promo;
+  genererCoupons: async (data: { nombre: number; valeur: number }): Promise<Coupon[]> => {
+    const res = await api.post('/admin/coupons/generer', data);
+    return res.data;
   },
 
-  /**
-   * Mettre à jour une promo
-   */
-  updatePromo: async (id: string, data: Partial<Promotion>): Promise<Promotion> => {
-    const response = await api.put(`/admin/promo/${id}`, data);
-    return response.data.promo;
+  exportCouponsPdf: async (): Promise<Blob> => {
+    const res = await api.get('/admin/coupons/pdf', { responseType: 'blob' });
+    return res.data;
   },
 
-  /**
-   * Supprimer une promo
-   */
-  deletePromo: async (id: string): Promise<void> => {
-    await api.delete(`/admin/promo/${id}`);
-  },
+  // ─── PROMOTIONS ───────────────────────────────────────────────────────────
 
-  // ─── COUPONS ───────────────────────────────────
-
-  /**
-   * Récupérer tous les coupons
-   */
-  getCoupons: async (): Promise<Coupon[]> => {
-    const response = await api.get('/admin/coupons');
-    return response.data.coupons;
-  },
-
-  /**
-   * Créer un coupon
-   */
-  createCoupon: async (data: Omit<Coupon, 'id'>): Promise<Coupon> => {
-    const response = await api.post('/admin/coupons', data);
-    return response.data.coupon;
-  },
-
-  /**
-   * Mettre à jour un coupon
-   */
-  updateCoupon: async (id: string, data: Partial<Coupon>): Promise<Coupon> => {
-    const response = await api.put(`/admin/coupons/${id}`, data);
-    return response.data.coupon;
-  },
-
-  /**
-   * Supprimer un coupon
-   */
-  deleteCoupon: async (id: string): Promise<void> => {
-    await api.delete(`/admin/coupons/${id}`);
-  },
-
-  // ─── PROMOTIONS ───────────────────────────────────
-
-  /**
-   * Récupérer toutes les promotions
-   */
   getPromotions: async (): Promise<Promotion[]> => {
-    const response = await api.get('/admin/promotions');
-    return response.data.promotions;
+    const res = await api.get('/admin/promotions');
+    return res.data;
   },
 
-  /**
-   * Créer une promotion
-   */
-  createPromotion: async (data: Omit<Promotion, 'id'>): Promise<Promotion> => {
-    const response = await api.post('/admin/promotions', data);
-    return response.data.promotion;
+  createPromotion: async (data: { titre: string; message?: string; image?: string }): Promise<Promotion> => {
+    const res = await api.post('/admin/promotions', data);
+    return res.data;
   },
 
-  /**
-   * Mettre à jour une promotion
-   */
-  updatePromotion: async (id: string, data: Partial<Promotion>): Promise<Promotion> => {
-    const response = await api.put(`/admin/promotions/${id}`, data);
-    return response.data.promotion;
-  },
-
-  /**
-   * Supprimer une promotion
-   */
-  deletePromotion: async (id: string): Promise<void> => {
-    await api.delete(`/admin/promotions/${id}`);
-  },
-
-  // ─── RAPPORTS ───────────────────────────────────
-
-  /**
-   * Récupérer les rapports
-   */
-  getRapports: async (): Promise<any[]> => {
-    const response = await api.get('/admin/rapports');
-    return response.data.rapports;
+  envoyerPromotion: async (id: number): Promise<void> => {
+    await api.post(`/admin/promotions/${id}/envoyer`);
   },
 };
 

@@ -38,7 +38,7 @@ const _verifier = async () => {
     }
 
     licenceValide = true
-    logger.info(`Licence valide — ${resultat.joursRestants} jour(s) restant(s)`)
+    logger.info(`✅ Licence valide — ${resultat.joursRestants} jour(s) restant(s)`)
   } catch (err) {
     logger.error('Erreur vérification licence :', err.message)
     licenceValide = false

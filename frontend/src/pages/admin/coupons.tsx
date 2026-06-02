@@ -1,5 +1,4 @@
-import { useState } from "react";
-import { useApp } from "@/contexts/AppContext";
+import { useState, useEffect } from "react";
 import AdminLayout from "@/layouts/AdminLayout";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -9,31 +8,51 @@ import { Ticket, Download, CheckCircle2 } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
 import { Badge } from "@/components/ui/badge";
 import { cn } from "@/lib/utils";
+import adminService, { Coupon } from "@/services/adminService";
 
 const VALEURS = [500, 1000, 2000, 5000];
 
 export default function AdminCoupons() {
-  const { currentUser, coupons, genererCoupons, clients } = useApp();
   const { toast } = useToast();
-  const salleId = currentUser?.salleId ?? 1;
-  const myCoupons = coupons.filter(c => c.salleId === salleId);
+  const [coupons, setCoupons] = useState<Coupon[]>([]);
   const [valeur, setValeur] = useState("500");
   const [count, setCount] = useState("10");
 
-  function handleGenerate() {
+  useEffect(() => {
+    adminService.getCoupons().then(setCoupons).catch(() => toast({ title: "Erreur chargement coupons", variant: "destructive" }));
+  }, []);
+
+  async function handleGenerate() {
     const n = Number(count);
     const v = Number(valeur);
     if (!n || n < 1 || n > 100) { toast({ title: "Nombre invalide (1-100)", variant: "destructive" }); return; }
-    genererCoupons(salleId, v, n);
-    toast({ title: `${n} coupon(s) de ${v}F générés` });
+    try {
+      await adminService.genererCoupons({ nombre: n, valeur: v });
+      toast({ title: `${n} coupon(s) de ${v}F générés` });
+      // Recharger
+      adminService.getCoupons().then(setCoupons);
+    } catch (err: any) {
+      toast({ title: err.response?.data?.message ?? "Erreur génération", variant: "destructive" });
+    }
   }
 
-  function handleExportPDF() {
-    toast({ title: "Export PDF", description: "PDF 40 coupons/A4 généré (simulation)" });
+  async function handleExportPDF() {
+    try {
+      const blob = await adminService.exportCouponsPdf();
+      const url = window.URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = `coupons-${new Date().getTime()}.pdf`;
+      a.click();
+      window.URL.revokeObjectURL(url);
+      toast({ title: "PDF téléchargé" });
+    } catch (err: any) {
+      toast({ title: err.response?.data?.message ?? "Export PDF non disponible (Phase 7)", variant: "destructive" });
+    }
   }
 
-  const actifs = myCoupons.filter(c => c.statut === "actif");
-  const utilises = myCoupons.filter(c => c.statut === "utilise");
+  const actifs = coupons.filter(c => !c.utilise);
+  const utilises = coupons.filter(c => c.utilise);
 
   return (
     <AdminLayout>
@@ -43,7 +62,6 @@ export default function AdminCoupons() {
           <p className="text-sm text-muted-foreground mt-0.5">{actifs.length} actifs · {utilises.length} utilisés</p>
         </div>
 
-        {/* Generator */}
         <div className="bg-card border border-border rounded-xl p-5 space-y-4">
           <div className="flex items-center gap-2">
             <Ticket size={16} className="text-primary" />
@@ -74,7 +92,6 @@ export default function AdminCoupons() {
           </div>
         </div>
 
-        {/* List */}
         <div className="bg-card border border-border rounded-xl overflow-hidden">
           <div className="px-5 py-4 border-b border-border flex items-center justify-between">
             <h2 className="text-sm font-semibold text-foreground">Tous les coupons</h2>
@@ -86,26 +103,21 @@ export default function AdminCoupons() {
                   <th className="text-left px-5 py-2.5 text-xs text-muted-foreground font-medium">Code</th>
                   <th className="text-left px-3 py-2.5 text-xs text-muted-foreground font-medium">Valeur</th>
                   <th className="text-left px-3 py-2.5 text-xs text-muted-foreground font-medium">Statut</th>
-                  <th className="text-left px-3 py-2.5 text-xs text-muted-foreground font-medium">Utilisé par</th>
                 </tr>
               </thead>
               <tbody className="divide-y divide-border">
-                {myCoupons.slice().reverse().map(coupon => {
-                  const client = clients.find(c => c.id === coupon.utilisePar);
-                  return (
-                    <tr key={coupon.id} className={cn("hover:bg-muted/20 transition-colors", coupon.statut === "utilise" && "opacity-60")} data-testid={`row-coupon-${coupon.id}`}>
-                      <td className="px-5 py-3 font-mono text-xs text-foreground">{coupon.code}</td>
-                      <td className="px-3 py-3 font-semibold text-primary">{coupon.valeur.toLocaleString()} F</td>
-                      <td className="px-3 py-3">
-                        <Badge className={coupon.statut === "actif" ? "bg-green-500/10 text-green-400 border-green-500/20 text-xs gap-1" : "bg-muted text-muted-foreground text-xs gap-1"}>
-                          {coupon.statut === "actif" ? <Ticket size={9} /> : <CheckCircle2 size={9} />}
-                          {coupon.statut === "actif" ? "Actif" : "Utilisé"}
-                        </Badge>
-                      </td>
-                      <td className="px-3 py-3 text-xs text-muted-foreground">{client ? client.pseudo : "—"}</td>
-                    </tr>
-                  );
-                })}
+                {coupons.slice().reverse().map(coupon => (
+                  <tr key={coupon.id} className={cn("hover:bg-muted/20 transition-colors", coupon.utilise && "opacity-60")} data-testid={`row-coupon-${coupon.id}`}>
+                    <td className="px-5 py-3 font-mono text-xs text-foreground">{coupon.code}</td>
+                    <td className="px-3 py-3 font-semibold text-primary">{coupon.valeur.toLocaleString()} F</td>
+                    <td className="px-3 py-3">
+                      <Badge className={!coupon.utilise ? "bg-green-500/10 text-green-400 border-green-500/20 text-xs gap-1" : "bg-muted text-muted-foreground text-xs gap-1"}>
+                        {!coupon.utilise ? <Ticket size={9} /> : <CheckCircle2 size={9} />}
+                        {!coupon.utilise ? "Actif" : "Utilisé"}
+                      </Badge>
+                    </td>
+                  </tr>
+                ))}
               </tbody>
             </table>
           </div>

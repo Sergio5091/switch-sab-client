@@ -1,5 +1,4 @@
-import { useState } from "react";
-import { useApp, DureePrix } from "@/contexts/AppContext";
+import { useState, useEffect } from "react";
 import AdminLayout from "@/layouts/AdminLayout";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -11,10 +10,11 @@ import { z } from "zod";
 import { Plus, Pencil, Trash2, DollarSign, ChevronLeft } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
 import { Link, useParams } from "wouter";
+import adminService, { Duree, Categorie } from "@/services/adminService";
 
 const schema = z.object({
-  duree: z.string().min(1, "Durée requise"),
-  dureeMinutes: z.coerce.number().min(1, "Minutes requises"),
+  libelle: z.string().min(1, "Libellé requis"),
+  secondes: z.coerce.number().min(1, "Secondes requises"),
   prix: z.coerce.number().min(1, "Prix requis"),
 });
 type FormValues = z.infer<typeof schema>;
@@ -22,33 +22,58 @@ type FormValues = z.infer<typeof schema>;
 export default function AdminDurees() {
   const params = useParams<{ id: string }>();
   const catId = Number(params.id);
-  const { categories, dureesPrix, addDureePrix, updateDureePrix, deleteDureePrix } = useApp();
   const { toast } = useToast();
-  const cat = categories.find(c => c.id === catId);
-  const myDurees = dureesPrix.filter(d => d.categorieId === catId);
+  const [cat, setCat] = useState<Categorie | null>(null);
+  const [durees, setDurees] = useState<Duree[]>([]);
   const [open, setOpen] = useState(false);
-  const [editing, setEditing] = useState<DureePrix | null>(null);
+  const [editing, setEditing] = useState<Duree | null>(null);
   const [deleteId, setDeleteId] = useState<number | null>(null);
+
+  useEffect(() => {
+    adminService.getCategories().then(cats => setCat(cats.find(c => c.id === catId) ?? null));
+    adminService.getDurees(catId).then(setDurees).catch(() => toast({ title: "Erreur chargement tarifs", variant: "destructive" }));
+  }, [catId]);
 
   const form = useForm<FormValues>({
     resolver: zodResolver(schema),
-    defaultValues: { duree: "", dureeMinutes: 60, prix: 500 },
+    defaultValues: { libelle: "", secondes: 3600, prix: 500 },
   });
 
   function openCreate() {
     setEditing(null);
-    form.reset({ duree: "", dureeMinutes: 60, prix: 500 });
+    form.reset({ libelle: "", secondes: 3600, prix: 500 });
     setOpen(true);
   }
-  function openEdit(d: DureePrix) {
+  function openEdit(d: Duree) {
     setEditing(d);
-    form.reset({ duree: d.duree, dureeMinutes: d.dureeMinutes, prix: d.prix });
+    form.reset({ libelle: d.libelle, secondes: d.secondes, prix: d.prix });
     setOpen(true);
   }
-  function onSubmit(values: FormValues) {
-    if (editing) { updateDureePrix(editing.id, values); toast({ title: "Tarif mis à jour" }); }
-    else { addDureePrix({ ...values, categorieId: catId }); toast({ title: "Tarif ajouté" }); }
-    setOpen(false);
+  async function onSubmit(values: FormValues) {
+    try {
+      if (editing) {
+        const updated = await adminService.updateDuree(editing.id, values);
+        setDurees(prev => prev.map(d => d.id === editing.id ? updated : d));
+        toast({ title: "Tarif mis à jour" });
+      } else {
+        const created = await adminService.createDuree(catId, values);
+        setDurees(prev => [...prev, created]);
+        toast({ title: "Tarif ajouté" });
+      }
+      setOpen(false);
+    } catch (err: any) {
+      toast({ title: err.response?.data?.message ?? "Erreur", variant: "destructive" });
+    }
+  }
+  async function handleDelete(id: number) {
+    try {
+      await adminService.deleteDuree(id);
+      setDurees(prev => prev.filter(d => d.id !== id));
+      toast({ title: "Tarif supprimé" });
+    } catch (err: any) {
+      toast({ title: err.response?.data?.message ?? "Erreur suppression", variant: "destructive" });
+    }
+    setDeleteId(null);
   }
 
   return (
@@ -61,10 +86,8 @@ export default function AdminDurees() {
             </a>
           </Link>
           <div>
-            <h1 className="text-xl font-bold text-foreground">
-              Tarifs — {cat?.nom ?? "Catégorie"}
-            </h1>
-            <p className="text-sm text-muted-foreground mt-0.5">{myDurees.length} tarif(s) définis</p>
+            <h1 className="text-xl font-bold text-foreground">Tarifs — {cat?.nom ?? "Catégorie"}</h1>
+            <p className="text-sm text-muted-foreground mt-0.5">{durees.length} tarif(s) définis</p>
           </div>
           <Button onClick={openCreate} className="gap-1.5 ml-auto" data-testid="button-add-duree">
             <Plus size={16} /> Nouveau tarif
@@ -72,22 +95,22 @@ export default function AdminDurees() {
         </div>
 
         <div className="bg-card border border-border rounded-xl overflow-hidden">
-          {myDurees.length === 0 ? (
+          {durees.length === 0 ? (
             <div className="px-5 py-10 text-center text-muted-foreground text-sm">Aucun tarif. Créez-en un.</div>
           ) : (
             <div className="divide-y divide-border">
-              {myDurees.sort((a, b) => a.dureeMinutes - b.dureeMinutes).map(d => (
+              {durees.sort((a, b) => a.secondes - b.secondes).map(d => (
                 <div key={d.id} className="flex items-center gap-4 px-5 py-4" data-testid={`row-duree-${d.id}`}>
                   <div className="w-10 h-10 rounded-xl bg-primary/10 border border-primary/20 flex items-center justify-center flex-shrink-0">
                     <DollarSign size={16} className="text-primary" />
                   </div>
                   <div className="flex-1">
-                    <div className="font-semibold text-foreground text-sm">{d.duree}</div>
-                    <div className="text-xs text-muted-foreground">{d.dureeMinutes} minutes</div>
+                    <div className="font-semibold text-foreground text-sm">{d.libelle}</div>
+                    <div className="text-xs text-muted-foreground">{Math.round(d.secondes / 60)} minutes</div>
                   </div>
                   <div className="text-right">
                     <div className="text-lg font-bold text-primary">{d.prix.toLocaleString()} F</div>
-                    <div className="text-xs text-muted-foreground">{Math.round(d.prix / d.dureeMinutes * 60)} F/h</div>
+                    <div className="text-xs text-muted-foreground">{Math.round(d.prix / (d.secondes / 3600))} F/h</div>
                   </div>
                   <div className="flex items-center gap-1 flex-shrink-0">
                     <Button variant="ghost" size="sm" onClick={() => openEdit(d)} data-testid={`button-edit-duree-${d.id}`}>
@@ -108,17 +131,17 @@ export default function AdminDurees() {
             <DialogHeader><DialogTitle>{editing ? "Modifier le tarif" : "Nouveau tarif"}</DialogTitle></DialogHeader>
             <Form {...form}>
               <form onSubmit={form.handleSubmit(onSubmit)} className="space-y-3">
-                <FormField control={form.control} name="duree" render={({ field }) => (
+                <FormField control={form.control} name="libelle" render={({ field }) => (
                   <FormItem>
-                    <FormLabel>Libellé (ex: 1H, 30 min, 2H)</FormLabel>
-                    <FormControl><Input {...field} placeholder="1H" data-testid="input-duree" /></FormControl>
+                    <FormLabel>Libellé (ex: 1H, 30min, 2H)</FormLabel>
+                    <FormControl><Input {...field} placeholder="1H" data-testid="input-libelle" /></FormControl>
                     <FormMessage />
                   </FormItem>
                 )} />
-                <FormField control={form.control} name="dureeMinutes" render={({ field }) => (
+                <FormField control={form.control} name="secondes" render={({ field }) => (
                   <FormItem>
-                    <FormLabel>Durée en minutes</FormLabel>
-                    <FormControl><Input {...field} type="number" min={1} data-testid="input-duree-minutes" /></FormControl>
+                    <FormLabel>Durée en secondes</FormLabel>
+                    <FormControl><Input {...field} type="number" min={1} data-testid="input-secondes" /></FormControl>
                     <FormMessage />
                   </FormItem>
                 )} />
@@ -142,7 +165,7 @@ export default function AdminDurees() {
             <DialogHeader><DialogTitle>Supprimer ce tarif ?</DialogTitle></DialogHeader>
             <DialogFooter>
               <Button variant="ghost" onClick={() => setDeleteId(null)}>Annuler</Button>
-              <Button variant="destructive" onClick={() => { if (deleteId) { deleteDureePrix(deleteId); toast({ title: "Tarif supprimé" }); } setDeleteId(null); }}>Supprimer</Button>
+              <Button variant="destructive" onClick={() => deleteId && handleDelete(deleteId)}>Supprimer</Button>
             </DialogFooter>
           </DialogContent>
         </Dialog>

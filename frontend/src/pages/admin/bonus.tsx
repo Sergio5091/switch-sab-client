@@ -1,4 +1,4 @@
-import { useApp } from "@/contexts/AppContext";
+import { useState, useEffect } from "react";
 import AdminLayout from "@/layouts/AdminLayout";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -8,38 +8,75 @@ import { zodResolver } from "@hookform/resolvers/zod";
 import { z } from "zod";
 import { Gift, Clock, Info } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
+import adminService, { ConfigBonus } from "@/services/adminService";
 
 const schema = z.object({
-  ratioJeu: z.coerce.number().min(1, "Requis"),
-  ratioBonus: z.coerce.number().min(1, "Requis"),
+  ratioJeuMinutes: z.coerce.number().min(1, "Requis"),
+  ratioBonusMinutes: z.coerce.number().min(1, "Requis"),
   seuilMinutes: z.coerce.number().min(1, "Requis"),
   validiteMois: z.coerce.number().min(1, "Requis"),
 });
 type FormValues = z.infer<typeof schema>;
 
 export default function AdminBonus() {
-  const { currentUser, bonusConfigs, updateBonusConfig } = useApp();
   const { toast } = useToast();
-  const salleId = currentUser?.salleId ?? 1;
-  const config = bonusConfigs.find(c => c.salleId === salleId);
+  const [config, setConfig] = useState<ConfigBonus | null>(null);
+
+  useEffect(() => {
+    adminService.getConfigBonus()
+      .then(setConfig)
+      .catch(() => {
+        // Pas encore créée, valeurs par défaut
+        setConfig({
+          id: 0,
+          salleId: 0,
+          ratioSecondes: 3600,
+          seuilDeblocage: 3600,
+          validitejours: 30,
+          reductionInvite: 0,
+          bonusParrain: 0,
+        });
+      });
+  }, []);
 
   const form = useForm<FormValues>({
     resolver: zodResolver(schema),
     defaultValues: {
-      ratioJeu: config?.ratioJeu ?? 60,
-      ratioBonus: config?.ratioBonus ?? 5,
-      seuilMinutes: config?.seuilMinutes ?? 60,
-      validiteMois: config?.validiteMois ?? 1,
+      ratioJeuMinutes: 60,
+      ratioBonusMinutes: 5,
+      seuilMinutes: 60,
+      validiteMois: 1,
     },
   });
 
-  function onSubmit(values: FormValues) {
-    updateBonusConfig(salleId, values);
-    toast({ title: "Configuration bonus sauvegardée" });
+  // Sync avec le backend
+  useEffect(() => {
+    if (config) {
+      form.reset({
+        ratioJeuMinutes: Math.round(config.ratioSecondes / 60),
+        ratioBonusMinutes: 5, // Le backend stocke ratioSecondes, pas le ratio bonus
+        seuilMinutes: Math.round(config.seuilDeblocage / 60),
+        validiteMois: Math.round(config.validitejours / 30),
+      });
+    }
+  }, [config]);
+
+  async function onSubmit(values: FormValues) {
+    try {
+      const updated = await adminService.updateConfigBonus({
+        ratioSecondes: values.ratioJeuMinutes * 60,
+        seuilDeblocage: values.seuilMinutes * 60,
+        validitejours: values.validiteMois * 30,
+      });
+      setConfig(updated);
+      toast({ title: "Configuration bonus sauvegardée" });
+    } catch (err: any) {
+      toast({ title: err.response?.data?.message ?? "Erreur", variant: "destructive" });
+    }
   }
 
-  const rj = form.watch("ratioJeu");
-  const rb = form.watch("ratioBonus");
+  const rj = form.watch("ratioJeuMinutes");
+  const rb = form.watch("ratioBonusMinutes");
 
   return (
     <AdminLayout>
@@ -49,7 +86,6 @@ export default function AdminBonus() {
           <p className="text-sm text-muted-foreground mt-0.5">Configurer les règles d'accumulation du bonus temps</p>
         </div>
 
-        {/* Preview card */}
         <div className="bg-primary/5 border border-primary/20 rounded-xl p-4 flex items-start gap-3">
           <Info size={16} className="text-primary mt-0.5 flex-shrink-0" />
           <div className="text-sm text-foreground">
@@ -72,7 +108,7 @@ export default function AdminBonus() {
           <Form {...form}>
             <form onSubmit={form.handleSubmit(onSubmit)} className="space-y-4">
               <div className="grid grid-cols-2 gap-4">
-                <FormField control={form.control} name="ratioJeu" render={({ field }) => (
+                <FormField control={form.control} name="ratioJeuMinutes" render={({ field }) => (
                   <FormItem>
                     <FormLabel>Minutes de jeu</FormLabel>
                     <FormControl><Input {...field} type="number" min={1} data-testid="input-ratio-jeu" /></FormControl>
@@ -80,7 +116,7 @@ export default function AdminBonus() {
                     <FormMessage />
                   </FormItem>
                 )} />
-                <FormField control={form.control} name="ratioBonus" render={({ field }) => (
+                <FormField control={form.control} name="ratioBonusMinutes" render={({ field }) => (
                   <FormItem>
                     <FormLabel>Minutes de bonus</FormLabel>
                     <FormControl><Input {...field} type="number" min={1} data-testid="input-ratio-bonus" /></FormControl>

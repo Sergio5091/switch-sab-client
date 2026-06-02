@@ -1,5 +1,5 @@
 import prisma from '../../services/prismaClient.js'
-import switchService from '../../switch/switchService.js'
+import * as switchService from '../../switch/switchService.js'
 import { getIO } from '../../socket.js'
 import logger from '../../config/logger.js'
 

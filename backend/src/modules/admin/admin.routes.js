@@ -1,6 +1,7 @@
 import { Router } from 'express'
 import { verifyJwt, requireRole } from '../../middlewares/auth.middleware.js'
 
+import { getDashboardStats } from './dashboard.controller.js'
 import { creerCategorie, listerCategories, modifierCategorie, supprimerCategorie } from './categories.controller.js'
 import { creerDuree, listerDurees, modifierDuree, supprimerDuree } from './durees.controller.js'
 import { creerPoste, listerPostes, modifierPoste, supprimerPoste } from './postes.controller.js'
@@ -14,6 +15,9 @@ const router = Router()
 
 // Toutes les routes admin nécessitent JWT + rôle ADMIN
 router.use(verifyJwt, requireRole('ADMIN'))
+
+// ─── Dashboard ────────────────────────────────────────────────────────────────
+router.get('/dashboard', getDashboardStats)
 
 // ─── Catégories ───────────────────────────────────────────────────────────────
 router.post  ('/categories',     creerCategorie)
