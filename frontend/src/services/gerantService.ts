@@ -1,158 +1,179 @@
 import api from './api';
 
-export interface Session {
-  id: string;
-  clientId: string;
-  posteId: string;
-  startTime: string;
-  endTime?: string;
-  duration: number; // en heures
-  amount: number;
-  status: 'active' | 'completed' | 'cancelled';
+export interface Client {
+  id: number;
+  pseudo: string;
+  telephone: string;
+  email?: string;
+  nom?: string;
+  prenom?: string;
+  estEnfant: boolean;
+  codeParental?: string;
+  active: boolean;
+  createdAt: string;
+  credits: { id: number; solde: number; categorie: { id: number; nom: string } }[];
+  bonus?: { solde: number; disponible: boolean };
 }
 
-export interface Client {
-  id: string;
-  email: string;
-  firstName: string;
-  lastName: string;
-  phone?: string;
-  balance: number;
+export interface Session {
+  id: number;
+  clientId: number;
+  clientPseudo?: string;
+  posteId: number;
+  dureeId: number;
+  tempsRestant: number;
+  statut: 'ACTIVE' | 'ARRETEE' | 'TERMINEE';
+  estBonus: boolean;
+  debut: string;
+  fin?: string;
+  client: { pseudo: string; telephone: string };
+  poste: { id: number; nom: string };
+  duree: { libelle: string; secondes: number; prix: number };
 }
 
 export interface Recharge {
-  id: string;
-  clientId: string;
-  amount: number;
-  paymentMethod: string;
+  id: number;
+  clientId: number;
+  client: { pseudo: string; telephone: string };
+  montant: number;
   date: string;
-  status: 'pending' | 'completed' | 'failed';
+  type: string;
+}
+
+export interface Categorie {
+  id: number;
+  nom: string;
+}
+
+export interface Duree {
+  id: number;
+  libelle: string;
+  secondes: number;
+  prix: number;
+  categorieId: number;
+}
+
+export interface Poste {
+  id: number;
+  nom: string;
+  statut: 'LIBRE' | 'OCCUPE';
+  categorieId: number;
+  categorie: { id: number; nom: string };
+}
+
+export interface RapportJour {
+  date: string;
+  gerant: string;
+  resume: {
+    totalSessions: number;
+    totalMontant: number;
+    totalSecondes: string;
+    sessionNormale: number;
+    sessionBonus: number;
+  };
+  parCategorie: Record<string, { nombre: number; montant: number; secondes: number }>;
+  parClient: Record<string, { nombre: number; montant: number; telephone: string; estEnfant: boolean }>;
+  detail: {
+    id: number;
+    client: string;
+    poste: string;
+    categorie: string;
+    duree: string;
+    montant: number;
+    debut: string;
+    fin?: string;
+    statut: string;
+    estBonus: boolean;
+  }[];
 }
 
 const gerantService = {
-  // ─── DASHBOARD ───────────────────────────────────
+  // ─── CLIENTS ──────────────────────────────────────────────────────────────
 
-  /**
-   * Récupérer les données du dashboard gérant
-   */
-  getDashboard: async (): Promise<any> => {
-    const response = await api.get('/gerant/dashboard');
-    return response.data;
-  },
-
-  // ─── SESSIONS ───────────────────────────────────
-
-  /**
-   * Créer une nouvelle session
-   */
-  createSession: async (data: Omit<Session, 'id'>): Promise<Session> => {
-    const response = await api.post('/gerant/session/new', data);
-    return response.data.session;
-  },
-
-  /**
-   * Récupérer toutes les sessions
-   */
-  getSessions: async (): Promise<Session[]> => {
-    const response = await api.get('/gerant/sessions');
-    return response.data.sessions;
-  },
-
-  /**
-   * Récupérer une session spécifique
-   */
-  getSession: async (id: string): Promise<Session> => {
-    const response = await api.get(`/gerant/sessions/${id}`);
-    return response.data.session;
-  },
-
-  /**
-   * Mettre à jour une session
-   */
-  updateSession: async (id: string, data: Partial<Session>): Promise<Session> => {
-    const response = await api.put(`/gerant/sessions/${id}`, data);
-    return response.data.session;
-  },
-
-  /**
-   * Terminer une session
-   */
-  endSession: async (id: string): Promise<Session> => {
-    const response = await api.post(`/gerant/sessions/${id}/end`, {});
-    return response.data.session;
-  },
-
-  // ─── CLIENTS ───────────────────────────────────
-
-  /**
-   * Récupérer tous les clients du gérant
-   */
   getClients: async (): Promise<Client[]> => {
-    const response = await api.get('/gerant/clients');
-    return response.data.clients;
+    const res = await api.get('/gerant/clients');
+    return res.data;
   },
 
-  /**
-   * Récupérer un client spécifique
-   */
-  getClient: async (id: string): Promise<Client> => {
-    const response = await api.get(`/gerant/clients/${id}`);
-    return response.data.client;
+  getClient: async (id: number): Promise<Client> => {
+    const res = await api.get(`/gerant/clients/${id}`);
+    return res.data;
   },
 
-  /**
-   * Mettre à jour un client
-   */
-  updateClient: async (id: string, data: Partial<Client>): Promise<Client> => {
-    const response = await api.put(`/gerant/clients/${id}`, data);
-    return response.data.client;
+  createClient: async (data: { pseudo: string; telephone: string; estEnfant?: boolean; codeParental?: string }): Promise<{ id: number; pseudo: string; telephone: string; motDePasseTemporaire: string }> => {
+    const res = await api.post('/gerant/clients', data);
+    return res.data;
   },
 
-  // ─── RECHARGES ───────────────────────────────────
-
-  /**
-   * Récupérer toutes les recharges
-   */
-  getRecharges: async (): Promise<Recharge[]> => {
-    const response = await api.get('/gerant/recharges');
-    return response.data.recharges;
+  updateClient: async (id: number, data: { pseudo?: string; email?: string; nom?: string; prenom?: string; estEnfant?: boolean; codeParental?: string; active?: boolean }): Promise<Client> => {
+    const res = await api.patch(`/gerant/clients/${id}`, data);
+    return res.data;
   },
 
-  /**
-   * Créer une recharge
-   */
-  createRecharge: async (data: Omit<Recharge, 'id'>): Promise<Recharge> => {
-    const response = await api.post('/gerant/recharges', data);
-    return response.data.recharge;
+  // ─── SESSIONS ─────────────────────────────────────────────────────────────
+
+  getSessions: async (): Promise<Session[]> => {
+    const res = await api.get('/gerant/sessions');
+    return res.data;
   },
 
-  /**
-   * Récupérer les recharges d'un client
-   */
-  getClientRecharges: async (clientId: string): Promise<Recharge[]> => {
-    const response = await api.get(`/gerant/clients/${clientId}/recharges`);
-    return response.data.recharges;
+  demarrerSession: async (data: { clientId: number; categorieId: number; dureeId: number; useBonus?: boolean }): Promise<Session> => {
+    const res = await api.post('/gerant/sessions', data);
+    return res.data.session;
   },
 
-  // ─── RAPPORTS ───────────────────────────────────
-
-  /**
-   * Récupérer les rapports du gérant
-   */
-  getRapports: async (): Promise<any[]> => {
-    const response = await api.get('/gerant/rapport');
-    return response.data.rapports;
+  arreterSession: async (id: number): Promise<{ tempsRestantConserve: number }> => {
+    const res = await api.post(`/gerant/sessions/${id}/arreter`);
+    return res.data;
   },
 
-  /**
-   * Générer un rapport pour une période
-   */
-  generateRapport: async (startDate: string, endDate: string): Promise<any> => {
-    const response = await api.post('/gerant/rapport/generate', {
-      startDate,
-      endDate,
-    });
-    return response.data.rapport;
+  // ─── RECHARGES ────────────────────────────────────────────────────────────
+
+  getRechargesEnAttente: async (): Promise<Recharge[]> => {
+    const res = await api.get('/gerant/recharges/en-attente');
+    return res.data;
+  },
+
+  creerRecharge: async (data: { clientId: number; categorieId: number; dureeId: number; montant: number }): Promise<any> => {
+    const res = await api.post('/gerant/recharges', data);
+    return res.data;
+  },
+
+  validerRecharge: async (id: number): Promise<any> => {
+    const res = await api.post(`/gerant/recharges/${id}/valider`);
+    return res.data;
+  },
+
+  // ─── POSTES ───────────────────────────────────────────────────────────────
+
+  getPostes: async (): Promise<Poste[]> => {
+    const res = await api.get('/gerant/sessions');
+    // On réutilise les sessions pour savoir quels postes sont occupés
+    return res.data;
+  },
+
+  // ─── CATEGORIES & DUREES (via admin routes) ───────────────────────────────
+
+  getCategories: async (): Promise<Categorie[]> => {
+    const res = await api.get('/admin/categories');
+    return res.data;
+  },
+
+  getDurees: async (categorieId: number): Promise<Duree[]> => {
+    const res = await api.get(`/admin/categories/${categorieId}/durees`);
+    return res.data;
+  },
+
+  getPostesDisponibles: async (): Promise<Poste[]> => {
+    const res = await api.get('/admin/postes');
+    return res.data;
+  },
+
+  // ─── RAPPORT ──────────────────────────────────────────────────────────────
+
+  getRapportJour: async (): Promise<RapportJour> => {
+    const res = await api.get('/gerant/rapport/jour');
+    return res.data;
   },
 };
 

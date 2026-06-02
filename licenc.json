@@ -1,8 +1,8 @@
 {
-  "licenceId": "LIC-2025-CTNU-XK9F",
+  "licenceId": "SAB-2026-0003",
   "salleId": 1,
   "machineId": "1197637109c1de39",
-  "issuedAt": "2025-01-15T10:00:00.000Z",
-  "expiresAt": "2026-01-15T10:00:00.000Z",
-  "signature": "BASE64_SIGNATURE_RSA_ICI"
+  "issuedAt": "2026-06-02T09:55:50.836Z",
+  "expiresAt": "2029-06-02T09:55:50.840Z",
+  "signature": "FB7jiqjKTnWQw5AuO6+1vtCCSKPqzlBPOzERFboBmZ4iVwGGplyhtRVUOEuKXu+WSzFxA101y8+SE6xE7HT+6aSL36WJON5Z5wqe0wHaBNCH4iKCx0/7IWJEUWv1+Soe/Tqb2uAWpMWOVM1koNxdYENb780thxdo0GFCumNUMfMylmvwPn8JimkrTugSYajqz7la1NvVh91CEBUJNH+QImghc70UbeH2d4Z5majsk3INiJsD9e+DY22MS7SJW5OwrDhDNtwwUJ+PPYIADm0zLCl/olpUq8dVEi/HIyhIUm9j7DM9E3SRrOAnjvV/DOJ2pr1iPcjb9HjK6B8wy5hBEg=="
 }

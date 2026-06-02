@@ -4,6 +4,7 @@ import { Toaster } from "@/components/ui/toaster";
 import { TooltipProvider } from "@/components/ui/tooltip";
 import { AppProvider, useApp } from "@/contexts/AppContext";
 import { ThemeProvider } from "@/contexts/ThemeContext";
+import { ShieldAlert, X } from "lucide-react";
 
 import LoginPage from "@/pages/login";
 import LicencePage from "@/pages/admin/licence";
@@ -40,6 +41,54 @@ import ClientPromotions from "@/pages/client/promotions";
 import ClientLeaderboard from "@/pages/client/leaderboard";
 
 const queryClient = new QueryClient();
+
+function FraudeAlert() {
+  const { fraudeDetectee, messageFraude, logout, resetFraude } = useApp();
+  const [, setLocation] = useLocation();
+  if (!fraudeDetectee) return null;
+
+  function handleActiverLicence() {
+    resetFraude();
+    setLocation("/admin/licence");
+  }
+
+  return (
+    <div className="fixed inset-0 z-[9999] flex items-center justify-center bg-black/70 backdrop-blur-sm">
+      <div className="bg-card border-2 border-destructive rounded-2xl p-6 max-w-md w-full mx-4 shadow-2xl">
+        <div className="flex items-start gap-4">
+          <div className="w-12 h-12 rounded-xl bg-destructive/20 flex items-center justify-center flex-shrink-0">
+            <ShieldAlert size={24} className="text-destructive" />
+          </div>
+          <div className="flex-1">
+            <h2 className="text-lg font-bold text-destructive mb-1">
+              ⚠️ Tentative de fraude détectée
+            </h2>
+            <p className="text-sm text-muted-foreground leading-relaxed">
+              {messageFraude}
+            </p>
+            <p className="text-xs text-muted-foreground mt-3 border-t border-border pt-3">
+              Cette licence a été corrompue. Importez une nouvelle licence valide ou contactez votre Super Admin.
+            </p>
+          </div>
+        </div>
+        <div className="mt-5 flex gap-2">
+          <button
+            onClick={handleActiverLicence}
+            className="flex-1 py-2.5 rounded-xl bg-primary text-white text-sm font-semibold hover:bg-primary/90 transition-colors"
+          >
+            Activer une nouvelle licence
+          </button>
+          <button
+            onClick={logout}
+            className="px-4 py-2.5 rounded-xl border border-border text-sm text-muted-foreground hover:text-destructive hover:border-destructive/30 transition-colors"
+          >
+            Déconnexion
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}
 
 function RoleRedirect() {
   const { currentUser, licenceStatut } = useApp();
@@ -200,6 +249,7 @@ function App() {
         <AppProvider>
           <TooltipProvider>
             <WouterRouter base={import.meta.env.BASE_URL.replace(/\/$/, "")}>
+              <FraudeAlert />
               <Router />
             </WouterRouter>
             <Toaster />

@@ -31,6 +31,9 @@ interface AppContextType {
   licenceStatut: LicenceStatut | null;
   checkLicenceStatut: () => Promise<LicenceStatut | null>;
   activerLicence: (licenceData: any) => Promise<boolean>;
+  fraudeDetectee: boolean;
+  messageFraude: string;
+  resetFraude: () => void;
 }
 
 const AppContext = createContext<AppContextType | null>(null);
@@ -46,6 +49,8 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
   });
 
   const [licenceStatut, setLicenceStatut] = useState<LicenceStatut | null>(null);
+  const [fraudeDetectee, setFraudeDetectee] = useState(false);
+  const [messageFraude, setMessageFraude] = useState("");
 
   useEffect(() => {
     if (currentUser) {
@@ -56,24 +61,50 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
   const checkLicenceStatut = useCallback(async (): Promise<LicenceStatut | null> => {
     try {
       const response = await axiosInstance.get<LicenceStatut>("/licence/statut");
-      setLicenceStatut(response.data);
-      return response.data;
+      const statut = response.data;
+      setLicenceStatut(statut);
+
+      // Détection de fraude
+      if (statut.statut === "INVALIDE" && statut.message.toLowerCase().includes("fraude")) {
+        setFraudeDetectee(true);
+        setMessageFraude(statut.message);
+      }
+
+      return statut;
     } catch (error) {
       console.error("Erreur vérification licence:", error);
       return null;
     }
   }, []);
 
+  // Poll toutes les 60 secondes pour détecter une fraude en temps réel
+  useEffect(() => {
+    if (!currentUser) return;
+    const interval = setInterval(() => {
+      checkLicenceStatut();
+    }, 60_000);
+    return () => clearInterval(interval);
+  }, [currentUser, checkLicenceStatut]);
+
   const activerLicence = useCallback(async (licenceData: any): Promise<boolean> => {
     try {
       await axiosInstance.post("/licence/activer", licenceData);
       const statut = await checkLicenceStatut();
+      if (statut?.statut === "ACTIVE") {
+        setFraudeDetectee(false);
+        setMessageFraude("");
+      }
       return statut?.statut === "ACTIVE";
     } catch (error) {
       console.error("Erreur activation licence:", error);
       return false;
     }
   }, [checkLicenceStatut]);
+
+  const resetFraude = useCallback(() => {
+    setFraudeDetectee(false);
+    setMessageFraude("");
+  }, []);
 
   const login = useCallback(async (email: string, password: string): Promise<{ success: boolean; licenceRequired: boolean }> => {
     try {
@@ -121,6 +152,7 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
     <AppContext.Provider value={{
       currentUser, login, logout,
       licenceStatut, checkLicenceStatut, activerLicence,
+      fraudeDetectee, messageFraude, resetFraude,
     }}>
       {children}
     </AppContext.Provider>

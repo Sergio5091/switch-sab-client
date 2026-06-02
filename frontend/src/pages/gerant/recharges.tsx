@@ -1,64 +1,92 @@
-import { useState } from "react";
-import { useApp } from "@/contexts/AppContext";
+import { useState, useEffect } from "react";
 import AdminLayout from "@/layouts/AdminLayout";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Label } from "@/components/ui/label";
-import { DollarSign, Search, Ticket, Zap } from "lucide-react";
+import { DollarSign, Search, Ticket, Zap, CheckCircle2 } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
 import { Badge } from "@/components/ui/badge";
 import { format } from "date-fns";
 import { fr } from "date-fns/locale";
 import { cn } from "@/lib/utils";
-
-const MONTANTS = [500, 1000, 2000, 5000, 10000];
+import gerantService, { Client, Categorie, Duree, Recharge } from "@/services/gerantService";
 
 export default function GerantRecharges() {
-  const { currentUser, clients, coupons, addRecharge, validerRecharge, utiliserCoupon, recharges } = useApp();
   const { toast } = useToast();
-  const salleId = currentUser?.salleId ?? 1;
-  const myClients = clients.filter(c => c.salleId === salleId);
+  const [clients, setClients] = useState<Client[]>([]);
+  const [categories, setCategories] = useState<Categorie[]>([]);
+  const [durees, setDurees] = useState<Duree[]>([]);
+  const [recharges, setRecharges] = useState<Recharge[]>([]);
 
   const [clientId, setClientId] = useState("");
+  const [categorieId, setCategorieId] = useState("");
+  const [dureeId, setDureeId] = useState("");
   const [montant, setMontant] = useState("");
-  const [couponCode, setCouponCode] = useState("");
-  const [mode, setMode] = useState<"cash" | "coupon">("cash");
   const [search, setSearch] = useState("");
+  const [loading, setLoading] = useState(false);
 
-  const myRecharges = recharges;
+  useEffect(() => {
+    Promise.all([
+      gerantService.getClients(),
+      gerantService.getCategories(),
+      gerantService.getRechargesEnAttente(),
+    ]).then(([c, cat, r]) => {
+      setClients(c);
+      setCategories(cat);
+      setRecharges(r);
+    });
+  }, []);
+
+  useEffect(() => {
+    if (!categorieId) { setDurees([]); setDureeId(""); return; }
+    gerantService.getDurees(Number(categorieId)).then(setDurees);
+    setDureeId("");
+  }, [categorieId]);
+
   const selectedClient = clients.find(c => c.id === Number(clientId));
+  const selectedDuree = durees.find(d => d.id === Number(dureeId));
 
-  function handleRecharge() {
-    if (!clientId) { toast({ title: "Sélectionner un client", variant: "destructive" }); return; }
-    if (mode === "cash") {
-      const m = Number(montant);
-      if (!m || m < 100) { toast({ title: "Montant invalide", variant: "destructive" }); return; }
-      const newR = { clientId: Number(clientId), montant: m, statut: "en_attente" as const, heureCreation: new Date().toISOString() };
-      addRecharge(newR);
-      // Immediately validate (gérant has cash in hand)
-      const tempId = Date.now();
-      setTimeout(() => {
-        validerRecharge(tempId, currentUser!.id);
-      }, 0);
-      // Directly update client credit via updateClient workaround - just add recharge then validate
-      // For simplicity in mock mode: find the newly added recharge and validate it
-      toast({ title: `Compte de ${selectedClient?.pseudo} rechargé de ${m.toLocaleString()} F` });
-      setMontant("");
-    } else {
-      if (!couponCode.trim()) { toast({ title: "Entrer un code coupon", variant: "destructive" }); return; }
-      const ok = utiliserCoupon(couponCode.trim().toUpperCase(), Number(clientId));
-      if (!ok) { toast({ title: "Coupon invalide ou déjà utilisé", variant: "destructive" }); return; }
-      const coupon = coupons.find(c => c.code === couponCode.trim().toUpperCase());
-      toast({ title: `Coupon de ${coupon?.valeur.toLocaleString() ?? "?"} F appliqué à ${selectedClient?.pseudo}` });
-      setCouponCode("");
+  async function handleRecharge() {
+    if (!clientId || !categorieId || !dureeId) {
+      toast({ title: "Sélectionner client, catégorie et durée", variant: "destructive" });
+      return;
+    }
+    const m = Number(montant) || selectedDuree?.prix || 0;
+    if (!m) { toast({ title: "Montant invalide", variant: "destructive" }); return; }
+
+    setLoading(true);
+    try {
+      await gerantService.creerRecharge({
+        clientId: Number(clientId),
+        categorieId: Number(categorieId),
+        dureeId: Number(dureeId),
+        montant: m,
+      });
+      toast({ title: `Compte de ${selectedClient?.pseudo} rechargé — +${selectedDuree?.libelle}` });
+      // Refresh
+      gerantService.getClients().then(setClients);
+      setClientId(""); setCategorieId(""); setDureeId(""); setMontant("");
+    } catch (err: any) {
+      toast({ title: err.response?.data?.message ?? "Erreur recharge", variant: "destructive" });
+    } finally {
+      setLoading(false);
     }
   }
 
-  const filteredRecharges = myRecharges.filter(r => {
-    const c = clients.find(cl => cl.id === r.clientId);
-    return !search || c?.pseudo.toLowerCase().includes(search.toLowerCase());
-  });
+  async function handleValider(id: number) {
+    try {
+      await gerantService.validerRecharge(id);
+      toast({ title: "Recharge validée" });
+      gerantService.getRechargesEnAttente().then(setRecharges);
+    } catch (err: any) {
+      toast({ title: err.response?.data?.message ?? "Erreur validation", variant: "destructive" });
+    }
+  }
+
+  const filteredRecharges = recharges.filter(r =>
+    !search || r.client?.pseudo?.toLowerCase().includes(search.toLowerCase())
+  );
 
   return (
     <AdminLayout>
@@ -69,103 +97,92 @@ export default function GerantRecharges() {
         </div>
 
         <div className="bg-card border border-border rounded-xl p-5 space-y-4">
+          {/* Client */}
           <div className="space-y-1.5">
             <Label>Client</Label>
             <Select value={clientId} onValueChange={setClientId}>
               <SelectTrigger data-testid="select-client-recharge"><SelectValue placeholder="Sélectionner un client" /></SelectTrigger>
               <SelectContent>
-                {myClients.map(c => (
-                  <SelectItem key={c.id} value={String(c.id)}>{c.pseudo} — {c.creditMonetaire.toLocaleString()} F</SelectItem>
+                {clients.filter(c => c.active).map(c => (
+                  <SelectItem key={c.id} value={String(c.id)}>{c.pseudo} — {c.telephone}</SelectItem>
                 ))}
               </SelectContent>
             </Select>
           </div>
 
-          {/* Mode */}
-          <div className="flex gap-2">
-            <button
-              onClick={() => setMode("cash")}
-              className={cn("flex-1 py-2.5 px-3 rounded-xl border text-sm font-medium transition-all flex items-center justify-center gap-2", mode === "cash" ? "bg-primary/10 border-primary/40 text-primary" : "bg-muted border-border text-muted-foreground hover:border-primary/30")}
-              data-testid="tab-cash"
-            >
-              <DollarSign size={14} /> Cash
-            </button>
-            <button
-              onClick={() => setMode("coupon")}
-              className={cn("flex-1 py-2.5 px-3 rounded-xl border text-sm font-medium transition-all flex items-center justify-center gap-2", mode === "coupon" ? "bg-primary/10 border-primary/40 text-primary" : "bg-muted border-border text-muted-foreground hover:border-primary/30")}
-              data-testid="tab-coupon"
-            >
-              <Ticket size={14} /> Coupon
-            </button>
+          {/* Catégorie */}
+          <div className="space-y-1.5">
+            <Label>Catégorie</Label>
+            <Select value={categorieId} onValueChange={setCategorieId}>
+              <SelectTrigger><SelectValue placeholder="Sélectionner une catégorie" /></SelectTrigger>
+              <SelectContent>
+                {categories.map(c => <SelectItem key={c.id} value={String(c.id)}>{c.nom}</SelectItem>)}
+              </SelectContent>
+            </Select>
           </div>
 
-          {mode === "cash" ? (
-            <div className="space-y-3">
-              <Label>Montant (FCFA)</Label>
-              <div className="grid grid-cols-5 gap-2">
-                {MONTANTS.map(m => (
+          {/* Durées */}
+          {durees.length > 0 && (
+            <div className="space-y-1.5">
+              <Label className="flex items-center gap-1.5"><Ticket size={12} /> Durée à créditer</Label>
+              <div className="grid grid-cols-3 gap-2">
+                {durees.sort((a, b) => a.secondes - b.secondes).map(d => (
                   <button
-                    key={m}
-                    onClick={() => setMontant(String(m))}
-                    className={cn("py-2 rounded-xl border text-xs font-semibold transition-all", montant === String(m) ? "bg-primary/10 border-primary/40 text-primary" : "bg-muted border-border text-muted-foreground hover:border-primary/30")}
-                    data-testid={`button-montant-${m}`}
+                    key={d.id}
+                    onClick={() => { setDureeId(String(d.id)); setMontant(String(d.prix)); }}
+                    className={`p-3 rounded-xl border text-sm transition-all ${dureeId === String(d.id) ? "bg-primary/10 border-primary/40 text-primary" : "bg-muted border-border text-foreground hover:border-primary/30"}`}
+                    data-testid={`button-duree-${d.id}`}
                   >
-                    {m >= 1000 ? `${m / 1000}k` : m}
+                    <div className="font-bold">{d.libelle}</div>
+                    <div className="text-xs mt-0.5 opacity-70">{d.prix.toLocaleString()} F</div>
                   </button>
                 ))}
               </div>
-              <Input value={montant} onChange={e => setMontant(e.target.value)} type="number" placeholder="Autre montant..." data-testid="input-montant" />
-            </div>
-          ) : (
-            <div className="space-y-1.5">
-              <Label className="flex items-center gap-1.5"><Ticket size={12} /> Code coupon</Label>
-              <Input
-                value={couponCode}
-                onChange={e => setCouponCode(e.target.value.toUpperCase())}
-                placeholder="SW-XXXXXX"
-                className="font-mono"
-                data-testid="input-coupon-code"
-              />
             </div>
           )}
 
-          <Button className="w-full gap-2" onClick={handleRecharge} data-testid="button-recharge">
-            <Zap size={15} /> Recharger
+          {/* Montant */}
+          <div className="space-y-1.5">
+            <Label className="flex items-center gap-1.5"><DollarSign size={12} /> Montant encaissé (FCFA)</Label>
+            <Input value={montant} onChange={e => setMontant(e.target.value)} type="number" placeholder="Montant payé par le client" data-testid="input-montant" />
+          </div>
+
+          <Button className="w-full gap-2" onClick={handleRecharge} disabled={loading} data-testid="button-recharge">
+            <Zap size={15} /> {loading ? "Recharge en cours..." : "Recharger"}
           </Button>
         </div>
 
-        {/* History */}
-        <div className="bg-card border border-border rounded-xl overflow-hidden">
-          <div className="px-5 py-4 border-b border-border flex items-center gap-3">
-            <h2 className="text-sm font-semibold text-foreground flex-1">Historique des recharges</h2>
-            <div className="relative">
-              <Search size={13} className="absolute left-2.5 top-1/2 -translate-y-1/2 text-muted-foreground" />
-              <Input value={search} onChange={e => setSearch(e.target.value)} placeholder="Chercher..." className="pl-8 h-7 text-xs w-40" data-testid="input-search-recharge" />
+        {/* Recharges en attente */}
+        {filteredRecharges.length > 0 && (
+          <div className="bg-card border border-border rounded-xl overflow-hidden">
+            <div className="px-5 py-4 border-b border-border flex items-center gap-3">
+              <h2 className="text-sm font-semibold text-foreground flex-1">Recharges clients en attente ({recharges.length})</h2>
+              <div className="relative">
+                <Search size={13} className="absolute left-2.5 top-1/2 -translate-y-1/2 text-muted-foreground" />
+                <Input value={search} onChange={e => setSearch(e.target.value)} placeholder="Chercher..." className="pl-8 h-7 text-xs w-40" />
+              </div>
             </div>
-          </div>
-          <div className="divide-y divide-border">
-            {filteredRecharges.slice().reverse().slice(0, 20).map(r => {
-              const c = clients.find(cl => cl.id === r.clientId);
-              return (
+            <div className="divide-y divide-border">
+              {filteredRecharges.map(r => (
                 <div key={r.id} className="flex items-center gap-3 px-5 py-3" data-testid={`row-recharge-${r.id}`}>
-                  <div className={cn("w-7 h-7 rounded-lg flex items-center justify-center flex-shrink-0", r.statut === "validee" ? "bg-green-500/10" : "bg-yellow-500/10")}>
-                    <DollarSign size={12} className={r.statut === "validee" ? "text-green-400" : "text-yellow-400"} />
+                  <div className="w-7 h-7 rounded-lg bg-yellow-500/10 flex items-center justify-center flex-shrink-0">
+                    <DollarSign size={12} className="text-yellow-400" />
                   </div>
                   <div className="flex-1 min-w-0">
-                    <div className="text-sm font-medium text-foreground">{c?.pseudo ?? "—"}</div>
-                    <div className="text-xs text-muted-foreground">{format(new Date(r.heureCreation), "dd MMM · HH:mm", { locale: fr })}</div>
+                    <div className="text-sm font-medium text-foreground">{r.client?.pseudo ?? "—"}</div>
+                    <div className="text-xs text-muted-foreground">{format(new Date(r.date), "dd MMM · HH:mm", { locale: fr })}</div>
                   </div>
-                  <div className="text-right">
+                  <div className="text-right mr-2">
                     <div className="text-sm font-bold text-green-400">+{r.montant.toLocaleString()} F</div>
-                    <Badge className={r.statut === "validee" ? "bg-green-500/10 text-green-400 border-green-500/20 text-xs" : "bg-yellow-500/10 text-yellow-400 border-yellow-500/20 text-xs"}>
-                      {r.statut === "validee" ? "Validée" : "En attente"}
-                    </Badge>
                   </div>
+                  <Button size="sm" variant="outline" className="gap-1 text-xs border-green-500/30 text-green-400 hover:bg-green-500/10" onClick={() => handleValider(r.id)}>
+                    <CheckCircle2 size={12} /> Valider
+                  </Button>
                 </div>
-              );
-            })}
+              ))}
+            </div>
           </div>
-        </div>
+        )}
       </div>
     </AdminLayout>
   );

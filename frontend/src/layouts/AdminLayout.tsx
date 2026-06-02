@@ -5,9 +5,9 @@ import { useTheme } from "@/contexts/ThemeContext";
 import { Button } from "@/components/ui/button";
 import {
   LayoutDashboard, Building2, Users, Shield, Key, Monitor,
-  Tag, DollarSign, Gift, Megaphone, BarChart2, Settings,
+  Tag, DollarSign, Gift, Megaphone, BarChart2,
   Ticket, LogOut, Menu, X, Gamepad2, Clock, FileText,
-  ChevronRight, UserCheck, Zap, Sun, Moon
+  ChevronRight, UserCheck, Zap, Sun, Moon, ShieldAlert, ShieldCheck
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 
@@ -43,6 +43,43 @@ const gerantNav: NavItem[] = [
   { href: "/gerant/recharges", label: "Recharges", icon: DollarSign },
   { href: "/gerant/rapport", label: "Rapport du jour", icon: FileText },
 ];
+
+function LicenceBadge() {
+  const { licenceStatut } = useApp();
+
+  if (!licenceStatut) return null;
+
+  const jours = licenceStatut.joursRestants;
+  const actif = licenceStatut.statut === "ACTIVE";
+
+  const color = !actif
+    ? "border-destructive/30 bg-destructive/10 text-destructive"
+    : jours <= 7
+    ? "border-red-500/30 bg-red-500/10 text-red-400"
+    : jours <= 30
+    ? "border-yellow-500/30 bg-yellow-500/10 text-yellow-400"
+    : "border-green-500/30 bg-green-500/10 text-green-400";
+
+  const Icon = actif ? ShieldCheck : ShieldAlert;
+
+  return (
+    <Link href="/admin/licence">
+      <div className={cn("mx-3 mb-2 px-3 py-2.5 rounded-lg border cursor-pointer transition-all hover:opacity-80", color)}>
+        <div className="flex items-center gap-2">
+          <Icon size={14} />
+          <span className="text-xs font-semibold">
+            {actif ? "Licence active" : "Licence invalide"}
+          </span>
+        </div>
+        {actif && (
+          <div className="text-xs mt-1 opacity-80">
+            Expire dans <span className="font-bold">{jours} jour{jours > 1 ? "s" : ""}</span>
+          </div>
+        )}
+      </div>
+    </Link>
+  );
+}
 
 export default function AdminLayout({ children }: { children: React.ReactNode }) {
   const { currentUser, logout } = useApp();
@@ -125,6 +162,11 @@ export default function AdminLayout({ children }: { children: React.ReactNode })
             );
           })}
         </nav>
+
+        {/* Licence — visible uniquement pour admin */}
+        {currentUser?.role === "admin" && (
+          <LicenceBadge />
+        )}
 
         {/* Footer */}
         <div className="p-3 border-t border-sidebar-border space-y-1">

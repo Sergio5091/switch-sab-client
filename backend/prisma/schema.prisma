@@ -225,6 +225,7 @@ model LicenceLocale {
   expiresAt DateTime
   status    String   @default("ACTIVE")
   signature String
+  hash      String   // Hash de contrôle anti-fraude
   createdAt DateTime @default(now())
 
   salle Salle @relation(fields: [salleId], references: [id])

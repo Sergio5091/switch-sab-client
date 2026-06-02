@@ -1,5 +1,5 @@
 import prisma from '../../services/prismaClient.js'
-import { verifierLicence, getLicenceActive } from '../../services/licenceService.js'
+import { verifierLicence, getLicenceActive, computeHash } from '../../services/licenceService.js'
 import { reloadLicence } from '../../middlewares/licence.middleware.js'
 import { getMachineId } from '../../services/machineId.js'
 import logger from '../../config/logger.js'
@@ -68,16 +68,24 @@ export const activer = async (req, res) => {
       data:  { status: 'REMPLACEE' }
     })
 
-    const licence = await prisma.licenceLocale.create({
-      data: {
-        licenceId,
-        salleId:   Number(salleId),
-        machineId,
-        issuedAt:  new Date(issuedAt),
-        expiresAt: new Date(expiresAt),
-        signature,
-        status:    'ACTIVE',
-      }
+    const licenceData = {
+      licenceId,
+      salleId:   Number(salleId),
+      machineId,
+      issuedAt:  new Date(issuedAt),
+      expiresAt: new Date(expiresAt),
+      signature,
+      status:    'ACTIVE',
+    }
+
+    // Calculer le hash de contrôle anti-fraude
+    const hash = computeHash({ ...licenceData, issuedAt, expiresAt })
+
+    // upsert : crée ou met à jour si le licenceId existe déjà
+    const licence = await prisma.licenceLocale.upsert({
+      where: { licenceId },
+      update: { ...licenceData, hash },
+      create: { ...licenceData, hash },
     })
 
     await reloadLicence()
