@@ -41,6 +41,7 @@ const gerantNav: NavItem[] = [
   { href: "/gerant/session/new", label: "Nouvelle session", icon: Clock },
   { href: "/gerant/clients", label: "Clients", icon: Users },
   { href: "/gerant/recharges", label: "Recharges", icon: DollarSign },
+  { href: "/gerant/coupons", label: "Coupons", icon: Ticket },
   { href: "/gerant/rapport", label: "Rapport du jour", icon: FileText },
 ];
 

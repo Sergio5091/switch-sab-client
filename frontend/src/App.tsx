@@ -30,6 +30,7 @@ import GerantDashboard from "@/pages/gerant/dashboard";
 import GerantSessionNew from "@/pages/gerant/session-new";
 import GerantClients from "@/pages/gerant/clients";
 import GerantRecharges from "@/pages/gerant/recharges";
+import GerantCoupons from "@/pages/gerant/coupons";
 import GerantRapport from "@/pages/gerant/rapport";
 
 import ClientHome from "@/pages/client/home";
@@ -205,6 +206,9 @@ function Router() {
       </Route>
       <Route path="/gerant/recharges">
         {() => <ProtectedRoute component={GerantRecharges} roles={["gerant"]} />}
+      </Route>
+      <Route path="/gerant/coupons">
+        {() => <ProtectedRoute component={GerantCoupons} roles={["gerant"]} />}
       </Route>
       <Route path="/gerant/rapport">
         {() => <ProtectedRoute component={GerantRapport} roles={["gerant"]} />}
