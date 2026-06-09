@@ -90,8 +90,11 @@ function RoleRedirect() {
   const { currentUser, licenceStatut } = useApp();
   if (!currentUser) return <Redirect to="/login" />;
   
-  // Si la licence est invalide ou expirée, rediriger vers la page de licence
-  if (licenceStatut?.statut !== "ACTIVE") {
+  // Attendre que le statut licence soit chargé avant de rediriger
+  if (licenceStatut === null) return null;
+  
+  // Si la licence est explicitement invalide, rediriger vers la page de licence
+  if (licenceStatut.statut !== "ACTIVE") {
     return <Redirect to="/admin/licence" />;
   }
   
@@ -115,8 +118,8 @@ function ProtectedRoute({
   if (!currentUser) return <Redirect to="/login" />;
   if (!roles.includes(currentUser.role)) return <RoleRedirect />;
   
-  // Pour les routes admin, vérifier la licence
-  if (roles.includes("admin") && licenceStatut?.statut !== "ACTIVE") {
+  // Pour les routes admin, vérifier la licence seulement si déjà chargée
+  if (roles.includes("admin") && licenceStatut !== null && licenceStatut.statut !== "ACTIVE") {
     return <Redirect to="/admin/licence" />;
   }
   

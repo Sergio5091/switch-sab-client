@@ -1,7 +1,7 @@
 import { useState, useEffect } from "react";
 import ClientLayout from "@/layouts/ClientLayout";
 import { Link } from "wouter";
-import { DollarSign, Gift, Clock, Play, Square, ChevronRight, Ticket, Wallet } from "lucide-react";
+import { DollarSign, Gift, Clock, Play, Square, ChevronRight, Ticket } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "@/components/ui/dialog";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
@@ -38,6 +38,7 @@ export default function ClientHome() {
   const [data, setData] = useState<HomeData | null>(null);
   const [tick, setTick] = useState(0);
   const [openStart, setOpenStart] = useState(false);
+  const [openAcheter, setOpenAcheter] = useState(false);
   const [categories, setCategories] = useState<{ id: number; nom: string }[]>([]);
   const [catId, setCatId] = useState("");
   const [durees, setDurees] = useState<Duree[]>([]);
@@ -50,15 +51,29 @@ export default function ClientHome() {
   useEffect(() => { const i = setInterval(() => setTick(t => t + 1), 1000); return () => clearInterval(i); }, []);
 
   useEffect(() => {
-    if (!openStart) return;
+    if (!openStart && !openAcheter) return;
     api.get('/client/categories').then(r => setCategories(r.data)).catch(console.error);
-  }, [openStart]);
+  }, [openStart, openAcheter]);
 
   useEffect(() => {
     if (!catId) return;
     setDureeId("");
     api.get(`/client/categories/${catId}/durees`).then(r => setDurees(r.data)).catch(console.error);
   }, [catId]);
+
+  async function handleAcheterCredit() {
+    if (!catId || !dureeId) return;
+    setLoading(true);
+    try {
+      const res = await api.post('/client/acheter-credit', { categorieId: Number(catId), dureeId: Number(dureeId) });
+      toast({ title: res.data.message, description: `Solde restant : ${res.data.soldeRestant.toLocaleString()} FCFA` });
+      setOpenAcheter(false);
+      setCatId(""); setDureeId("");
+      reload();
+    } catch (err: any) {
+      toast({ title: err.response?.data?.message ?? "Erreur", variant: "destructive" });
+    } finally { setLoading(false); }
+  }
 
   async function handleStart() {
     if (!catId || !dureeId) return;
@@ -105,9 +120,17 @@ export default function ClientHome() {
         {/* Soldes */}
         <div className="grid grid-cols-2 gap-3">
           <div className="bg-gradient-to-br from-primary/20 to-primary/5 border border-primary/30 rounded-2xl p-4">
-            <div className="flex items-center gap-1.5 text-xs text-muted-foreground mb-1.5"><Wallet size={11} /> Solde</div>
+            <div className="flex items-center gap-1.5 text-xs text-muted-foreground mb-1.5"><Ticket size={11} /> Solde coupon</div>
             <div className="text-2xl font-bold text-foreground">{(data?.soldeMonetaire ?? 0).toLocaleString()}</div>
-            <div className="text-xs text-muted-foreground">FCFA</div>
+            <div className="text-xs text-muted-foreground">FCFA disponibles</div>
+            {(data?.soldeMonetaire ?? 0) > 0 && (
+              <button
+                onClick={() => setOpenAcheter(true)}
+                className="mt-2 text-xs text-primary font-medium flex items-center gap-1 hover:underline"
+              >
+                <DollarSign size={10} /> Acheter des minutes
+              </button>
+            )}
           </div>
           <div className="bg-gradient-to-br from-orange-500/20 to-orange-500/5 border border-orange-500/30 rounded-2xl p-4">
             <div className="flex items-center gap-1.5 text-xs text-muted-foreground mb-1.5"><Gift size={11} /> Bonus</div>
@@ -207,6 +230,50 @@ export default function ClientHome() {
           </div>
         )}
       </div>
+
+      {/* Dialog acheter minutes avec solde coupon */}
+      <Dialog open={openAcheter} onOpenChange={v => { if (!v) { setOpenAcheter(false); setCatId(""); setDureeId(""); } }}>
+        <DialogContent className="sm:max-w-sm">
+          <DialogHeader><DialogTitle>Acheter des minutes</DialogTitle></DialogHeader>
+          <div className="text-xs text-muted-foreground bg-muted/30 rounded-lg px-3 py-2 mb-2">
+            Solde disponible : <span className="font-semibold text-foreground">{(data?.soldeMonetaire ?? 0).toLocaleString()} FCFA</span>
+          </div>
+          <div className="space-y-3">
+            <Select value={catId} onValueChange={setCatId}>
+              <SelectTrigger><SelectValue placeholder="Choisir une catégorie" /></SelectTrigger>
+              <SelectContent>{categories.map(c => <SelectItem key={c.id} value={String(c.id)}>{c.nom}</SelectItem>)}</SelectContent>
+            </Select>
+            {catId && durees.length > 0 && (
+              <div className="grid grid-cols-2 gap-2">
+                {durees.sort((a, b) => a.secondes - b.secondes).map(d => {
+                  const suffisant = (data?.soldeMonetaire ?? 0) >= d.prix;
+                  return (
+                    <button
+                      key={d.id}
+                      onClick={() => setDureeId(String(d.id))}
+                      disabled={!suffisant}
+                      className={`p-3 rounded-xl border text-sm transition-all disabled:opacity-40 disabled:cursor-not-allowed text-left ${dureeId === String(d.id) ? "bg-primary/10 border-primary/40 text-primary" : "bg-muted border-border text-foreground hover:border-primary/30"}`}
+                    >
+                      <div className="font-bold">{d.libelle}</div>
+                      <div className="text-xs opacity-70">{d.prix.toLocaleString()} F</div>
+                    </button>
+                  );
+                })}
+              </div>
+            )}
+            {selectedDuree && (
+              <div className="text-xs text-muted-foreground bg-muted/30 rounded-lg px-3 py-2">
+                Solde après achat : <span className="font-semibold text-foreground">{((data?.soldeMonetaire ?? 0) - selectedDuree.prix).toLocaleString()} FCFA</span>
+              </div>
+            )}
+          </div>
+          <DialogFooter>
+            <Button onClick={handleAcheterCredit} disabled={!catId || !dureeId || loading}>
+              <DollarSign size={14} className="mr-1.5" /> Confirmer l'achat
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
 
       {/* Dialog démarrer session */}
       <Dialog open={openStart} onOpenChange={v => { if (!v) { setOpenStart(false); setCatId(""); setDureeId(""); } }}>

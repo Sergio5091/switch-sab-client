@@ -31,7 +31,7 @@ axiosInstance.interceptors.response.use(
     if (error.response?.status === 401) {
       // Token expiré ou invalide
       localStorage.removeItem('authToken');
-      localStorage.removeItem('currentUser');
+      localStorage.removeItem('switch_sab_user');
       window.location.href = '/login';
     }
     return Promise.reject(error);

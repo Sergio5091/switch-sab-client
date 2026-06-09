@@ -52,27 +52,20 @@ const _verifier = async () => {
  * Routes exemptées : /api/auth/login, /api/auth/register, /api/licence/*
  */
 export const requireLicence = (req, res, next) => {
-  const originalUrl = req.originalUrl.split('?')[0]
-
-  console.log('[requireLicence] originalUrl:', originalUrl, 'licenceValide:', licenceValide)
+  const url = req.originalUrl.split('?')[0]
 
   const exemptee =
-    originalUrl === '/api/auth/login'      ||
-    originalUrl === '/api/auth/register'   ||
-    originalUrl.startsWith('/api/licence')
+    url === '/api/auth/login'    ||
+    url === '/api/auth/register' ||
+    url.startsWith('/api/licence')
 
-  if (exemptee) {
-    console.log('[requireLicence] Route exemptée')
-    return next()
-  }
+  if (exemptee) return next()
 
   if (!licenceValide) {
-    console.log('[requireLicence] Licence invalide - bloqué')
     return res.status(403).json({
       message: 'Licence invalide ou expirée. Contactez votre administrateur.'
     })
   }
 
-  console.log('[requireLicence] Licence OK - autorisé')
   next()
 }
