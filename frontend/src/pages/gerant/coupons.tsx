@@ -5,14 +5,20 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
-import { Ticket, Download, CheckCircle2, QrCode, Printer } from "lucide-react";
+import { Ticket, CheckCircle2, QrCode, Printer } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
 import { Badge } from "@/components/ui/badge";
 import { cn } from "@/lib/utils";
 import { QRCodeSVG } from "qrcode.react";
-import adminService, { Coupon } from "@/services/adminService";
+import api from "@/services/api";
 
-const VALEURS = [500, 1000, 2000, 5000];
+interface Coupon {
+  id: number;
+  code: string;
+  valeur: number;
+  utilise: boolean;
+  createdAt: string;
+}
 
 function CouponQRModal({ coupon, onClose }: { coupon: Coupon; onClose: () => void }) {
   const printRef = useRef<HTMLDivElement>(null);
@@ -27,8 +33,8 @@ function CouponQRModal({ coupon, onClose }: { coupon: Coupon; onClose: () => voi
       <style>
         body { margin: 0; display: flex; justify-content: center; align-items: center; min-height: 100vh; font-family: monospace; }
         .coupon { border: 2px dashed #f97316; border-radius: 12px; padding: 20px; text-align: center; width: 200px; }
-        .code { font-size: 14px; font-weight: bold; margin: 8px 0; }
         .valeur { font-size: 20px; font-weight: bold; color: #f97316; }
+        .code { font-size: 14px; font-weight: bold; margin: 8px 0; }
         .label { font-size: 11px; color: #666; margin-top: 4px; }
       </style></head>
       <body>${content}</body></html>
@@ -46,21 +52,12 @@ function CouponQRModal({ coupon, onClose }: { coupon: Coupon; onClose: () => voi
             <QrCode size={16} className="text-primary" /> QR Code — Coupon
           </DialogTitle>
         </DialogHeader>
-
         <div ref={printRef} className="coupon flex flex-col items-center gap-3 p-4 border-2 border-dashed border-primary/40 rounded-xl">
           <div className="valeur text-xl font-bold text-primary">{coupon.valeur.toLocaleString()} FCFA</div>
-          <QRCodeSVG
-            value={coupon.code}
-            size={180}
-            bgColor="transparent"
-            fgColor="currentColor"
-            className="text-foreground"
-            level="M"
-          />
+          <QRCodeSVG value={coupon.code} size={180} bgColor="transparent" fgColor="currentColor" className="text-foreground" level="M" />
           <div className="code font-mono text-sm font-semibold text-foreground tracking-widest">{coupon.code}</div>
           <div className="label text-xs text-muted-foreground">SWITCH SAB — Coupon de recharge</div>
         </div>
-
         <Button onClick={handlePrint} className="w-full gap-2" variant="outline">
           <Printer size={15} /> Imprimer
         </Button>
@@ -69,27 +66,36 @@ function CouponQRModal({ coupon, onClose }: { coupon: Coupon; onClose: () => voi
   );
 }
 
-export default function AdminCoupons() {
+const VALEURS = [500, 1000, 2000, 5000];
+
+export default function GerantCoupons() {
   const { toast } = useToast();
   const [coupons, setCoupons] = useState<Coupon[]>([]);
   const [valeur, setValeur] = useState("500");
-  const [count, setCount] = useState("10");
+  const [count, setCount] = useState("5");
+  const [loading, setLoading] = useState(false);
   const [selectedCoupon, setSelectedCoupon] = useState<Coupon | null>(null);
 
   useEffect(() => {
-    adminService.getCoupons().then(setCoupons).catch(() => toast({ title: "Erreur chargement coupons", variant: "destructive" }));
+    api.get('/gerant/coupons')
+      .then(r => setCoupons(r.data))
+      .catch(() => toast({ title: "Erreur chargement coupons", variant: "destructive" }));
   }, []);
 
   async function handleGenerate() {
     const n = Number(count);
     const v = Number(valeur);
-    if (!n || n < 1 || n > 100) { toast({ title: "Nombre invalide (1-100)", variant: "destructive" }); return; }
+    if (!n || n < 1 || n > 50) { toast({ title: "Nombre invalide (1-50)", variant: "destructive" }); return; }
+    setLoading(true);
     try {
-      await adminService.genererCoupons({ nombre: n, valeur: v });
-      toast({ title: `${n} coupon(s) de ${v}F générés` });
-      adminService.getCoupons().then(setCoupons);
+      await api.post('/gerant/coupons/generer', { nombre: n, valeur: v });
+      toast({ title: `${n} coupon(s) de ${v.toLocaleString()} F générés` });
+      const res = await api.get('/gerant/coupons');
+      setCoupons(res.data);
     } catch (err: any) {
       toast({ title: err.response?.data?.message ?? "Erreur génération", variant: "destructive" });
+    } finally {
+      setLoading(false);
     }
   }
 
@@ -104,7 +110,6 @@ export default function AdminCoupons() {
           <p className="text-sm text-muted-foreground mt-0.5">{actifs.length} actifs · {utilises.length} utilisés</p>
         </div>
 
-        {/* Générateur */}
         <div className="bg-card border border-border rounded-xl p-5 space-y-4">
           <div className="flex items-center gap-2">
             <Ticket size={16} className="text-primary" />
@@ -114,23 +119,25 @@ export default function AdminCoupons() {
             <div className="space-y-1.5">
               <Label>Valeur (FCFA)</Label>
               <Select value={valeur} onValueChange={setValeur}>
-                <SelectTrigger className="w-32" data-testid="select-valeur-coupon"><SelectValue /></SelectTrigger>
+                <SelectTrigger className="w-32"><SelectValue /></SelectTrigger>
                 <SelectContent>
                   {VALEURS.map(v => <SelectItem key={v} value={String(v)}>{v.toLocaleString()} F</SelectItem>)}
                 </SelectContent>
               </Select>
             </div>
             <div className="space-y-1.5">
-              <Label>Quantité</Label>
-              <Input value={count} onChange={e => setCount(e.target.value)} type="number" min={1} max={100} className="w-24" data-testid="input-count-coupon" />
+              <Label>Quantité (max 50)</Label>
+              <Input value={count} onChange={e => setCount(e.target.value)} type="number" min={1} max={50} className="w-24" />
             </div>
-            <Button onClick={handleGenerate} className="gap-1.5" data-testid="button-generate-coupons">
-              <Ticket size={15} /> Générer
+            <Button onClick={handleGenerate} disabled={loading} className="gap-1.5">
+              <Ticket size={15} /> {loading ? "Génération..." : "Générer"}
             </Button>
           </div>
+          <p className="text-xs text-muted-foreground">
+            ⚠️ Les coupons générés ne peuvent pas être modifiés ni supprimés.
+          </p>
         </div>
 
-        {/* Liste */}
         <div className="bg-card border border-border rounded-xl overflow-hidden">
           <div className="px-5 py-4 border-b border-border">
             <h2 className="text-sm font-semibold text-foreground">Tous les coupons</h2>
@@ -146,8 +153,11 @@ export default function AdminCoupons() {
                 </tr>
               </thead>
               <tbody className="divide-y divide-border">
-                {coupons.slice().reverse().map(coupon => (
-                  <tr key={coupon.id} className={cn("hover:bg-muted/20 transition-colors", coupon.utilise && "opacity-50")} data-testid={`row-coupon-${coupon.id}`}>
+                {coupons.length === 0 && (
+                  <tr><td colSpan={4} className="px-5 py-8 text-center text-muted-foreground text-sm">Aucun coupon généré</td></tr>
+                )}
+                {coupons.map(coupon => (
+                  <tr key={coupon.id} className={cn("hover:bg-muted/20 transition-colors", coupon.utilise && "opacity-50")}>
                     <td className="px-5 py-3 font-mono text-xs text-foreground tracking-widest">{coupon.code}</td>
                     <td className="px-3 py-3 font-semibold text-primary">{coupon.valeur.toLocaleString()} F</td>
                     <td className="px-3 py-3">
@@ -158,13 +168,7 @@ export default function AdminCoupons() {
                     </td>
                     <td className="px-3 py-3">
                       {!coupon.utilise && (
-                        <Button
-                          variant="ghost"
-                          size="sm"
-                          className="gap-1 text-xs text-primary hover:text-primary"
-                          onClick={() => setSelectedCoupon(coupon)}
-                          data-testid={`button-qr-${coupon.id}`}
-                        >
+                        <Button variant="ghost" size="sm" className="gap-1 text-xs text-primary hover:text-primary" onClick={() => setSelectedCoupon(coupon)}>
                           <QrCode size={14} /> Voir QR
                         </Button>
                       )}
@@ -176,9 +180,7 @@ export default function AdminCoupons() {
           </div>
         </div>
 
-        {selectedCoupon && (
-          <CouponQRModal coupon={selectedCoupon} onClose={() => setSelectedCoupon(null)} />
-        )}
+        {selectedCoupon && <CouponQRModal coupon={selectedCoupon} onClose={() => setSelectedCoupon(null)} />}
       </div>
     </AdminLayout>
   );
