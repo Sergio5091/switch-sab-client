@@ -5,15 +5,18 @@ import prisma from './prismaClient.js'
 import logger from '../config/logger.js'
 
 // ─── Clé publique ─────────────────────────────────────────────────────────────
-
-let publicKeyCache = null
+// Priorité 1 : variable d'env base64 LICENCE_PUBLIC_KEY_PEM (production Render)
+// Priorité 2 : fichier .pem local (développement)
 
 const getPublicKey = () => {
-  if (publicKeyCache) return publicKeyCache
+  // Production : clé encodée en base64 dans la variable d'env
+  if (process.env.LICENCE_PUBLIC_KEY_PEM) {
+    return Buffer.from(process.env.LICENCE_PUBLIC_KEY_PEM, 'base64').toString('utf-8')
+  }
+  // Développement : lire depuis le fichier
   const keyPath = path.resolve(process.env.LICENCE_PUBLIC_KEY_PATH || './keys/public-key.pem')
   if (!existsSync(keyPath)) return null
-  publicKeyCache = readFileSync(keyPath, 'utf-8')
-  return publicKeyCache
+  return readFileSync(keyPath, 'utf-8')
 }
 
 // ─── Hash de contrôle anti-fraude ─────────────────────────────────────────────
