@@ -54,7 +54,6 @@ model Salle {
   users       User[]
   categories  Categorie[]
   promos      Promo[]
-  licences    LicenceLocale[]
   configBonus ConfigBonus?
   coupons     Coupon[]
 }
@@ -216,10 +215,11 @@ model Promo {
 
 // Licence locale — copie de la licence générée par le Projet 1
 // Vérifiée hors-ligne avec la clé publique RSA
+// salleId est un identifiant de référence Super Admin, sans FK locale
 model LicenceLocale {
   id        Int      @id @default(autoincrement())
   licenceId String   @unique
-  salleId   Int
+  salleId   Int      // référence Super Admin — pas de FK sur Salle
   machineId String
   issuedAt  DateTime
   expiresAt DateTime
@@ -227,6 +227,4 @@ model LicenceLocale {
   signature String
   hash      String   // Hash de contrôle anti-fraude
   createdAt DateTime @default(now())
-
-  salle Salle @relation(fields: [salleId], references: [id])
 }

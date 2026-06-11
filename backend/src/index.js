@@ -11,6 +11,7 @@ import gerantRoutes   from './modules/gerant/gerant.routes.js'
 import clientRoutes   from './modules/client/client.routes.js'
 import rapportsRoutes from './modules/rapports/rapports.routes.js'
 import licenceRoutes  from './modules/licence/licence.routes.js'
+import setupRoutes    from './modules/setup/setup.routes.js'
 
 dotenv.config()
 
@@ -37,5 +38,6 @@ app.use('/api/gerant',   gerantRoutes)
 app.use('/api/client',   clientRoutes)
 app.use('/api/rapports', rapportsRoutes)
 app.use('/api/licence',  licenceRoutes)
+app.use('/api/setup',    setupRoutes)
 
 export default app

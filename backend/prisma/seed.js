@@ -54,6 +54,18 @@ async function main() {
       salleId:    salle.id,
     }
   })
+  const admin2 = await prisma.user.upsert({
+    where: { telephone: '+22900000001' },
+    update: {},
+    create: {
+      pseudo:     'admin2',
+      email:      'admin2@switchsab.local',
+      telephone:  '+22900000001',
+      motDePasse: hash('admin12356'),
+      role:       'ADMIN',
+      salleId:    salle.id,
+    }
+  })
 
   const gerant1 = await prisma.user.upsert({
     where: { telephone: '+22900000002' },
@@ -201,6 +213,7 @@ async function main() {
   console.log('\n🎉 Seed terminé !\n')
   console.log('Comptes disponibles :')
   console.log('  Admin    → email: admin@switchsab.local   | tel: +22900000001 | mdp: admin123')
+  console.log('  Admin    → email: admin2@switchsab.local  | tel: +22900000001 | mdp: admin12356')
   console.log('  Gérant 1 → email: gerant1@switchsab.local | tel: +22900000002 | mdp: gerant123')
   console.log('  Gérant 2 → email: gerant2@switchsab.local | tel: +22900000003 | mdp: gerant123')
   console.log('  Clients  → kofi/amina/yann/fatou/marcus   | mdp: client123')

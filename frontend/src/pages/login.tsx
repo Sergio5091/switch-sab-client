@@ -162,11 +162,12 @@ export default function LoginPage() {
     login(values.identifiant, values.password)
       .then((result) => {
         setLoading(false);
-        if (result.success && result.licenceRequired) {
+        if (result.success && result.salleRequired) {
+          setLocation("/setup/salle");
+        } else if (result.success && result.licenceRequired) {
           setLocation("/admin/licence");
         } else if (result.success) {
           toast({ title: "Connexion réussie" });
-          // Redirection selon le rôle (currentUser est déjà mis à jour dans login())
           const user = JSON.parse(localStorage.getItem("switch_sab_user") || "{}");
           const dest = user.role === "admin" ? "/admin/dashboard"
             : user.role === "gerant" ? "/gerant/dashboard"

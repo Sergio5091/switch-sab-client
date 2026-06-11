@@ -8,6 +8,7 @@ import { ShieldAlert, X } from "lucide-react";
 
 import LoginPage from "@/pages/login";
 import LicencePage from "@/pages/admin/licence";
+import SetupSallePage from "@/pages/setup/salle";
 import NotFound from "@/pages/not-found";
 
 // import SuperAdminDashboard from "@/pages/superadmin/dashboard";
@@ -142,6 +143,9 @@ function Router() {
     <Switch>
       <Route path="/" component={RoleRedirect} />
       <Route path="/login" component={LoginGuard} />
+
+      {/* Setup première installation */}
+      <Route path="/setup/salle" component={SetupSallePage} />
 
       {/* Licence activation route - accessible seulement si connecté */}
       <Route path="/admin/licence">

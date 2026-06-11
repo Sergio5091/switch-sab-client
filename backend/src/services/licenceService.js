@@ -96,7 +96,6 @@ export const verifierLicence = (licence) => {
 
 export const getLicenceActive = async () => {
   return prisma.licenceLocale.findFirst({
-    where: { status: 'ACTIVE' },
-    include: { salle: true }
+    where: { status: 'ACTIVE' }
   })
 }
