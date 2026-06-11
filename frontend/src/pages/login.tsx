@@ -143,14 +143,6 @@ export default function LoginPage() {
   const [error, setError] = useState("");
   const [loading, setLoading] = useState(false);
 
-  if (currentUser) {
-    const dest = currentUser.role === "admin" ? "/admin/dashboard"
-      : currentUser.role === "gerant" ? "/gerant/dashboard"
-      : "/client/home";
-    setLocation(dest);
-    return null;
-  }
-
   const form = useForm<FormValues>({
     resolver: zodResolver(schema),
     defaultValues: { identifiant: "", password: "admin123" },

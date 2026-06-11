@@ -130,29 +130,36 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
       if (response.data?.token && response.data?.user) {
         const u = response.data.user;
         const user: Utilisateur = {
-          id:     u.id,
-          nom:    u.nom ?? "",
-          prenom: u.prenom ?? "",
-          pseudo: u.pseudo,
-          email:  u.email ?? "",
-          phone:  u.telephone ?? "",
-          role:   (u.role as string).toLowerCase() as Role,
+          id:      u.id,
+          nom:     u.nom ?? "",
+          prenom:  u.prenom ?? "",
+          pseudo:  u.pseudo,
+          email:   u.email ?? "",
+          phone:   u.telephone ?? "",
+          role:    (u.role as string).toLowerCase() as Role,
           salleId: u.salleId ?? 1,
-          actif:  u.active,
+          actif:   u.active,
         };
-        setCurrentUser(user);
-        localStorage.setItem("switch_sab_user", JSON.stringify(user));
+
+        // Stocker le token AVANT les vérifications (nécessaire pour les appels API suivants)
         localStorage.setItem("authToken", response.data.token);
 
-        // Vérifier setup salle (seulement pour admin)
+        // Vérifier setup salle (seulement pour admin) — AVANT setCurrentUser
         let salleRequired = false;
         if ((u.role as string).toLowerCase() === "admin") {
           salleRequired = !(await checkSetupStatut());
         }
 
-        // Vérifier licence
+        // Vérifier licence — AVANT setCurrentUser
         const statut = await checkLicenceStatut();
-        const licenceRequired = !salleRequired && statut?.statut !== "ACTIVE";
+        // licenceRequired seulement si on a une réponse explicite invalide
+        // (si statut null = erreur réseau, on laisse RoleRedirect décider après le re-render)
+        const licenceRequired = !salleRequired && statut !== null && statut.statut !== "ACTIVE";
+
+        // Mettre à jour le state APRÈS toutes les vérifications pour éviter
+        // un re-render prématuré qui déclencherait RoleRedirect avec un état incomplet
+        setCurrentUser(user);
+        localStorage.setItem("switch_sab_user", JSON.stringify(user));
 
         return { success: true, licenceRequired, salleRequired };
       }

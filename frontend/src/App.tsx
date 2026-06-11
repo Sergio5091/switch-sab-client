@@ -89,14 +89,22 @@ function FraudeAlert() {
 }
 
 function RoleRedirect() {
-  const { currentUser, licenceStatut } = useApp();
+  const { currentUser, licenceStatut, salleConfiguree } = useApp();
   if (!currentUser) return <Redirect to="/login" />;
-  
-  // Si la licence est invalide ou expirée, rediriger vers la page de licence
-  if (licenceStatut?.statut !== "ACTIVE") {
+
+  // Première installation : salle pas encore configurée
+  if (currentUser.role === "admin" && salleConfiguree === false) {
+    return <Redirect to="/setup/salle" />;
+  }
+
+  // Licence invalide ou expirée (on attend que licenceStatut soit chargé)
+  if (licenceStatut !== null && licenceStatut.statut !== "ACTIVE") {
     return <Redirect to="/admin/licence" />;
   }
-  
+
+  // licenceStatut encore null (chargement en cours) → ne pas rediriger
+  if (licenceStatut === null) return null;
+
   switch (currentUser.role) {
     case "superadmin": return <Redirect to="/superadmin/dashboard" />;
     case "admin": return <Redirect to="/admin/dashboard" />;
@@ -113,15 +121,20 @@ function ProtectedRoute({
   component: React.ComponentType;
   roles: string[];
 }) {
-  const { currentUser, licenceStatut } = useApp();
+  const { currentUser, licenceStatut, salleConfiguree } = useApp();
   if (!currentUser) return <Redirect to="/login" />;
   if (!roles.includes(currentUser.role)) return <RoleRedirect />;
-  
-  // Pour les routes admin, vérifier la licence
-  if (roles.includes("admin") && licenceStatut?.statut !== "ACTIVE") {
+
+  // Première installation : salle pas encore configurée
+  if (roles.includes("admin") && salleConfiguree === false) {
+    return <Redirect to="/setup/salle" />;
+  }
+
+  // Pour les routes admin, vérifier la licence (attendre que licenceStatut soit chargé)
+  if (roles.includes("admin") && licenceStatut !== null && licenceStatut.statut !== "ACTIVE") {
     return <Redirect to="/admin/licence" />;
   }
-  
+
   return <Component />;
 }
 
