@@ -34,20 +34,38 @@ export const creerSalle = async (req, res) => {
       })
     }
 
-    const salle = await prisma.salle.create({
-      data: {
-        nom,
-        pays,
-        ville,
-        quartier,
-        telephone,
-        switchType:   switchType   || 'WIFI',
-        switchConfig: switchConfig || null,
-      }
+    // Transaction : créer salle + mettre à jour tous les admins (salleId = null)
+    const result = await prisma.$transaction(async (tx) => {
+      // 1. Créer la salle
+      const salle = await tx.salle.create({
+        data: {
+          nom,
+          pays,
+          ville,
+          quartier,
+          telephone,
+          switchType:   switchType   || 'WIFI',
+          switchConfig: switchConfig || null,
+        }
+      })
+
+      // 2. Mettre à jour tous les admins sans salle (salleId = null)
+      await tx.user.updateMany({
+        where: { role: 'ADMIN', salleId: null },
+        data: { salleId: salle.id }
+      })
+
+      return salle
     })
 
-    logger.info(`Salle créée : ${salle.nom} (id=${salle.id})`)
-    return res.status(201).json({ message: 'Salle créée avec succès', salle })
+    logger.info(`Salle créée : ${result.nom} (id=${result.id}) — Admins mis à jour`)
+    
+    // Retourner un message indiquant qu'il faut se reconnecter
+    return res.status(201).json({ 
+      message: 'Salle créée avec succès. Veuillez vous reconnecter pour actualiser votre session.', 
+      salle: result,
+      requireReconnect: true  // Flag pour le frontend
+    })
   } catch (err) {
     logger.error('[setup/salle]', err)
     return res.status(500).json({ message: 'Erreur serveur' })

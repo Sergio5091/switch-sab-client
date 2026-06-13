@@ -67,22 +67,26 @@ export const verifierLicence = (licence) => {
     return { valide: false, raison: 'Licence expirée' }
   }
 
-  // 3. Signature RSA (si clé publique disponible)
+  // 3. Signature RSA (obligatoire — pas de mode dev)
   const publicKey = getPublicKey()
   if (!publicKey) {
-    logger.warn('Clé publique absente — vérification RSA ignorée (mode dev)')
-  } else {
-    const payload = {
-      licenceId: licence.licenceId,
-      salleId:   licence.salleId,
-      machineId: licence.machineId,
-      issuedAt:  licence.issuedAt instanceof Date ? licence.issuedAt.toISOString() : licence.issuedAt,
-      expiresAt: licence.expiresAt instanceof Date ? licence.expiresAt.toISOString() : licence.expiresAt,
-    }
-    const signatureValide = verifySignature(payload, licence.signature)
-    if (signatureValide === false) {
-      return { valide: false, raison: 'Signature RSA invalide' }
-    }
+    logger.error('Clé publique RSA absente — impossible de vérifier la licence')
+    return { valide: false, raison: 'Clé publique RSA manquante. Placez la clé dans ./keys/public-key.pem' }
+  }
+
+  const payload = {
+    licenceId: licence.licenceId,
+    salleId:   licence.salleId,
+    machineId: licence.machineId,
+    issuedAt:  licence.issuedAt instanceof Date ? licence.issuedAt.toISOString() : licence.issuedAt,
+    expiresAt: licence.expiresAt instanceof Date ? licence.expiresAt.toISOString() : licence.expiresAt,
+  }
+  const signatureValide = verifySignature(payload, licence.signature)
+  if (signatureValide === false) {
+    return { valide: false, raison: 'Signature RSA invalide' }
+  }
+  if (signatureValide === null) {
+    return { valide: false, raison: 'Erreur lors de la vérification de la signature RSA' }
   }
 
   // 4. Jours restants

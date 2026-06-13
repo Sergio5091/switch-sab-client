@@ -23,25 +23,11 @@ const prisma = new PrismaClient({ adapter })
 const hash = (pwd) => bcrypt.hashSync(pwd, 10)
 
 async function main() {
-  console.log('🌱 Démarrage du seed...')
+  console.log('🌱 Démarrage du seed minimal...')
 
-  // ── Salle ──────────────────────────────────────────────────────────────
-  const salle = await prisma.salle.upsert({
-    where: { id: 1 },
-    update: {},
-    create: {
-      nom:         'Switch SAB Cotonou',
-      pays:        'Bénin',
-      ville:       'Cotonou',
-      quartier:    'Akpakpa',
-      telephone:   '+229 0197691879',
-      switchType:  'WIFI',
-      disabled:    false,
-    }
-  })
-  console.log('✅ Salle :', salle.nom)
-
-  // ── Users ──────────────────────────────────────────────────────────────
+  // ── Création compte ADMIN uniquement ───────────────────────────────────
+  // NOTE: La salle sera créée via l'interface /setup/salle lors de la première installation
+  
   const admin = await prisma.user.upsert({
     where: { telephone: '+22900000001' },
     update: {},
@@ -51,172 +37,22 @@ async function main() {
       telephone:  '+22900000001',
       motDePasse: hash('admin123'),
       role:       'ADMIN',
-      salleId:    salle.id,
-    }
-  })
-  const admin2 = await prisma.user.upsert({
-    where: { telephone: '+22900000001' },
-    update: {},
-    create: {
-      pseudo:     'admin2',
-      email:      'admin2@switchsab.local',
-      telephone:  '+22900000001',
-      motDePasse: hash('admin12356'),
-      role:       'ADMIN',
-      salleId:    salle.id,
+      salleId:    null,  // Pas encore de salle configurée
     }
   })
 
-  const gerant1 = await prisma.user.upsert({
-    where: { telephone: '+22900000002' },
-    update: {},
-    create: {
-      pseudo:     'gerant1',
-      email:      'gerant1@switchsab.local',
-      telephone:  '+22900000002',
-      motDePasse: hash('gerant123'),
-      role:       'GERANT',
-      telUrgence: '+22900000010',
-      salleId:    salle.id,
-    }
-  })
-
-  const gerant2 = await prisma.user.upsert({
-    where: { telephone: '+22900000003' },
-    update: {},
-    create: {
-      pseudo:     'gerant2',
-      email:      'gerant2@switchsab.local',
-      telephone:  '+22900000003',
-      motDePasse: hash('gerant123'),
-      role:       'GERANT',
-      telUrgence: '+22900000011',
-      salleId:    salle.id,
-    }
-  })
-
-  const clientsData = [
-    { pseudo: 'kofi',   telephone: '+22900000004' },
-    { pseudo: 'amina',  telephone: '+22900000005' },
-    { pseudo: 'yann',   telephone: '+22900000006' },
-    { pseudo: 'fatou',  telephone: '+22900000007' },
-    { pseudo: 'marcus', telephone: '+22900000008' },
-  ]
-
-  const clients = await Promise.all(
-    clientsData.map(c =>
-      prisma.user.upsert({
-        where: { telephone: c.telephone },
-        update: {},
-        create: {
-          pseudo:     c.pseudo,
-          telephone:  c.telephone,
-          motDePasse: hash('client123'),
-          role:       'CLIENT',
-          salleId:    salle.id,
-        }
-      })
-    )
-  )
-
-  console.log('✅ Users :', [admin, gerant1, gerant2, ...clients].map(u => u.pseudo).join(', '))
-
-  // ── Catégories + Durées ────────────────────────────────────────────────
-  const categoriesData = [
-    {
-      nom: 'PS4',
-      durees: [
-        { libelle: '30min', secondes: 1800,  prix: 300  },
-        { libelle: '1H',    secondes: 3600,  prix: 500  },
-        { libelle: '2H',    secondes: 7200,  prix: 900  },
-        { libelle: '3H',    secondes: 10800, prix: 1200 },
-      ]
-    },
-    {
-      nom: 'PS5',
-      durees: [
-        { libelle: '30min', secondes: 1800,  prix: 500  },
-        { libelle: '1H',    secondes: 3600,  prix: 800  },
-        { libelle: '2H',    secondes: 7200,  prix: 1400 },
-        { libelle: '3H',    secondes: 10800, prix: 2000 },
-      ]
-    },
-    {
-      nom: 'XBOX',
-      durees: [
-        { libelle: '30min', secondes: 1800,  prix: 400  },
-        { libelle: '1H',    secondes: 3600,  prix: 700  },
-        { libelle: '2H',    secondes: 7200,  prix: 1200 },
-        { libelle: '3H',    secondes: 10800, prix: 1600 },
-      ]
-    },
-  ]
-
-  const categories = []
-  for (const [i, cat] of categoriesData.entries()) {
-    const created = await prisma.categorie.upsert({
-      where: { id: i + 1 },
-      update: {},
-      create: {
-        nom:     cat.nom,
-        salleId: salle.id,
-        durees:  { create: cat.durees }
-      },
-      include: { durees: true }
-    })
-    categories.push(created)
-  }
-  console.log('✅ Catégories :', categories.map(c => c.nom).join(', '))
-
-  // ── Postes ─────────────────────────────────────────────────────────────
-  const postesData = [
-    { nom: 'PS4 — Poste 1',  categorieId: categories[0].id },
-    { nom: 'PS4 — Poste 2',  categorieId: categories[0].id },
-    { nom: 'PS5 — Poste 1',  categorieId: categories[1].id },
-    { nom: 'PS5 — Poste 2',  categorieId: categories[1].id },
-    { nom: 'XBOX — Poste 1', categorieId: categories[2].id },
-    { nom: 'XBOX — Poste 2', categorieId: categories[2].id },
-  ]
-
-  for (const [i, poste] of postesData.entries()) {
-    await prisma.poste.upsert({
-      where: { id: i + 1 },
-      update: {},
-      create: poste
-    })
-  }
-  console.log('✅ Postes :', postesData.map(p => p.nom).join(', '))
-
-  // ── Crédits initiaux (2 premiers clients — 2H PS4) ─────────────────────
-  for (const client of clients.slice(0, 2)) {
-    await prisma.credit.upsert({
-      where: { clientId_categorieId: { clientId: client.id, categorieId: categories[0].id } },
-      update: {},
-      create: { clientId: client.id, categorieId: categories[0].id, solde: 7200 }
-    })
-  }
-
-  // ── Config Bonus ───────────────────────────────────────────────────────
-  await prisma.configBonus.upsert({
-    where: { salleId: salle.id },
-    update: {},
-    create: {
-      salleId:        salle.id,
-      ratioSecondes:  300,   // 5min de bonus / heure jouée
-      seuilDeblocage: 3600,  // 1H pour débloquer
-      validitejours:  30,
-      reductionInvite: 20,
-      bonusParrain:   10,
-    }
-  })
-
-  console.log('\n🎉 Seed terminé !\n')
-  console.log('Comptes disponibles :')
-  console.log('  Admin    → email: admin@switchsab.local   | tel: +22900000001 | mdp: admin123')
-  console.log('  Admin    → email: admin2@switchsab.local  | tel: +22900000001 | mdp: admin12356')
-  console.log('  Gérant 1 → email: gerant1@switchsab.local | tel: +22900000002 | mdp: gerant123')
-  console.log('  Gérant 2 → email: gerant2@switchsab.local | tel: +22900000003 | mdp: gerant123')
-  console.log('  Clients  → kofi/amina/yann/fatou/marcus   | mdp: client123')
+  console.log('\n✅ Compte admin créé !')
+  console.log('\n═══════════════════════════════════════════════════════════')
+  console.log('  📧 Email     : admin@switchsab.local')
+  console.log('  📱 Téléphone : +22900000001')
+  console.log('  🔑 Mot de passe : admin123')
+  console.log('═══════════════════════════════════════════════════════════')
+  console.log('\n📋 Prochaines étapes :')
+  console.log('  1. Démarrer le backend : npm run dev')
+  console.log('  2. Se connecter avec les identifiants ci-dessus')
+  console.log('  3. Configurer la salle via l\'interface /setup/salle')
+  console.log('  4. Activer la licence via /admin/licence')
+  console.log('  5. Commencer à utiliser l\'application ✨\n')
 }
 
 main()

@@ -27,7 +27,7 @@ type FormValues = z.infer<typeof schema>;
 
 export default function SetupSallePage() {
   const [, setLocation] = useLocation();
-  const { currentUser, checkSetupStatut } = useApp();
+  const { currentUser, checkSetupStatut, logout } = useApp();
   const { toast } = useToast();
   const [error, setError] = useState("");
   const [loading, setLoading] = useState(false);
@@ -57,14 +57,29 @@ export default function SetupSallePage() {
     setError("");
     setLoading(true);
     try {
-      await axiosInstance.post("/setup/salle", {
+      const response = await axiosInstance.post("/setup/salle", {
         ...values,
         switchConfig: values.switchConfig || undefined,
       });
+      
       await checkSetupStatut();
-      toast({ title: "Salle créée avec succès" });
-      // Étape suivante : activer la licence
-      setLocation("/admin/licence");
+      
+      // Si le backend demande une reconnexion (pour actualiser le JWT avec le salleId)
+      if (response.data.requireReconnect) {
+        toast({ 
+          title: "Salle créée avec succès !", 
+          description: "Reconnectez-vous pour finaliser la configuration."
+        });
+        
+        // Déconnecter et rediriger vers login
+        setTimeout(() => {
+          logout();
+          setLocation("/login");
+        }, 1500);
+      } else {
+        toast({ title: "Salle créée avec succès" });
+        setLocation("/admin/licence");
+      }
     } catch (err: any) {
       setLoading(false);
       setError(err.response?.data?.message || "Erreur lors de la création de la salle");

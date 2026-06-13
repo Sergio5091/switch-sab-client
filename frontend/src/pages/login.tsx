@@ -19,7 +19,7 @@ const schema = z.object({
 type FormValues = z.infer<typeof schema>;
 
 const DEMO_ACCOUNTS = [
-  { label: "Admin", identifiant: "admin@switch.bj", color: "text-blue-500 dark:text-blue-400" },
+  { label: "Admin", identifiant: "admin@switchsab.local", color: "text-blue-500 dark:text-blue-400" },
   { label: "Gérant", identifiant: "gerant1", color: "text-green-500 dark:text-green-400" },
   { label: "Client", identifiant: "KevG", color: "text-purple-500 dark:text-purple-400" },
 ];
