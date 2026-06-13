@@ -3,4 +3,4 @@ node_modules/
 prisma/migrations/
 
 # Clés RSA — ne jamais commiter
-keys/*.pem
+# keys/*.pem
