@@ -9,7 +9,7 @@ import { Ticket, CheckCircle2, QrCode, Printer } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
 import { Badge } from "@/components/ui/badge";
 import { cn } from "@/lib/utils";
-import { QRCodeSVG } from "qrcode.react";
+import { QRCodeCanvas } from "qrcode.react";
 import api from "@/services/api";
 
 interface Coupon {
@@ -21,23 +21,33 @@ interface Coupon {
 }
 
 function CouponQRModal({ coupon, onClose }: { coupon: Coupon; onClose: () => void }) {
-  const printRef = useRef<HTMLDivElement>(null);
+  const canvasRef = useRef<HTMLCanvasElement>(null);
 
   function handlePrint() {
-    const content = printRef.current?.innerHTML;
-    if (!content) return;
-    const win = window.open("", "_blank");
+    const canvas = canvasRef.current;
+    if (!canvas) return;
+    const dataUrl = canvas.toDataURL('image/png');
+    const win = window.open('', '_blank');
     if (!win) return;
     win.document.write(`
       <html><head><title>Coupon ${coupon.code}</title>
       <style>
-        body { margin: 0; display: flex; justify-content: center; align-items: center; min-height: 100vh; font-family: monospace; }
-        .coupon { border: 2px dashed #f97316; border-radius: 12px; padding: 20px; text-align: center; width: 200px; }
-        .valeur { font-size: 20px; font-weight: bold; color: #f97316; }
-        .code { font-size: 14px; font-weight: bold; margin: 8px 0; }
-        .label { font-size: 11px; color: #666; margin-top: 4px; }
+        * { box-sizing: border-box; margin: 0; padding: 0; }
+        body { display: flex; justify-content: center; align-items: center; min-height: 100vh; font-family: monospace; background: #fff; }
+        .coupon { border: 2px dashed #f97316; border-radius: 12px; padding: 20px; text-align: center; width: 240px; display: flex; flex-direction: column; align-items: center; gap: 10px; }
+        .valeur { font-size: 22px; font-weight: bold; color: #f97316; }
+        .qr img { width: 180px; height: 180px; display: block; }
+        .code { font-size: 14px; font-weight: bold; letter-spacing: 3px; color: #111; }
+        .label { font-size: 11px; color: #666; }
       </style></head>
-      <body>${content}</body></html>
+      <body>
+        <div class="coupon">
+          <div class="valeur">${coupon.valeur.toLocaleString()} FCFA</div>
+          <div class="qr"><img src="${dataUrl}" /></div>
+          <div class="code">${coupon.code}</div>
+          <div class="label">SWITCH SAB — Coupon de recharge</div>
+        </div>
+      </body></html>
     `);
     win.document.close();
     win.print();
@@ -52,11 +62,11 @@ function CouponQRModal({ coupon, onClose }: { coupon: Coupon; onClose: () => voi
             <QrCode size={16} className="text-primary" /> QR Code — Coupon
           </DialogTitle>
         </DialogHeader>
-        <div ref={printRef} className="coupon flex flex-col items-center gap-3 p-4 border-2 border-dashed border-primary/40 rounded-xl">
-          <div className="valeur text-xl font-bold text-primary">{coupon.valeur.toLocaleString()} FCFA</div>
-          <QRCodeSVG value={coupon.code} size={180} bgColor="transparent" fgColor="currentColor" className="text-foreground" level="M" />
-          <div className="code font-mono text-sm font-semibold text-foreground tracking-widest">{coupon.code}</div>
-          <div className="label text-xs text-muted-foreground">SWITCH SAB — Coupon de recharge</div>
+        <div className="flex flex-col items-center gap-3 p-4 border-2 border-dashed border-primary/40 rounded-xl">
+          <div className="text-xl font-bold text-primary">{coupon.valeur.toLocaleString()} FCFA</div>
+          <QRCodeCanvas ref={canvasRef} value={coupon.code} size={180} bgColor="#ffffff" fgColor="#000000" level="M" />
+          <div className="font-mono text-sm font-semibold text-foreground tracking-widest">{coupon.code}</div>
+          <div className="text-xs text-muted-foreground">SWITCH SAB — Coupon de recharge</div>
         </div>
         <Button onClick={handlePrint} className="w-full gap-2" variant="outline">
           <Printer size={15} /> Imprimer

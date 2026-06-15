@@ -88,11 +88,11 @@ function FraudeAlert() {
 }
 
 function RoleRedirect() {
-  const { currentUser, licenceStatut } = useApp();
+  const { currentUser, licenceStatut, licenceLoaded } = useApp();
   if (!currentUser) return <Redirect to="/login" />;
   
-  // Si la licence est invalide ou expirée, rediriger vers la page de licence
-  if (licenceStatut?.statut !== "ACTIVE") {
+  // Ne rediriger vers licence que si on a fini de charger la licence ET qu'elle est invalide
+  if (licenceLoaded && licenceStatut?.statut !== "ACTIVE") {
     return <Redirect to="/admin/licence" />;
   }
   
@@ -112,12 +112,12 @@ function ProtectedRoute({
   component: React.ComponentType;
   roles: string[];
 }) {
-  const { currentUser, licenceStatut } = useApp();
+  const { currentUser, licenceStatut, licenceLoaded } = useApp();
   if (!currentUser) return <Redirect to="/login" />;
   if (!roles.includes(currentUser.role)) return <RoleRedirect />;
   
-  // Pour les routes admin, vérifier la licence
-  if (roles.includes("admin") && licenceStatut?.statut !== "ACTIVE") {
+  // Pour les routes admin, vérifier la licence (seulement si on a fini de charger)
+  if (licenceLoaded && roles.includes("admin") && licenceStatut?.statut !== "ACTIVE") {
     return <Redirect to="/admin/licence" />;
   }
   

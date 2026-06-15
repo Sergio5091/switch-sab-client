@@ -140,7 +140,7 @@ export default function LicencePage() {
                 </div>
                 <div className="text-xs text-muted-foreground space-y-1 font-mono">
                   <div>ID: {jsonContent.licenceId}</div>
-                  <div>Salle: {jsonContent.salleId}</div>
+                  <div>Salle: {jsonContent.nomSalle}</div>
                   <div>Machine: {jsonContent.machineId}</div>
                   <div>Expire: {new Date(jsonContent.expiresAt).toLocaleDateString()}</div>
                 </div>

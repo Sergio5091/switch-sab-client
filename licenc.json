@@ -1,8 +1,9 @@
 {
-  "licenceId": "SAB-2026-0003",
-  "salleId": 1,
+  "licenceId": "LIC-edbb1e05-04ed-439c-b478-9babfbfb1589",
+  "nomSalle": "Switch SAB - Salle Principale",
   "machineId": "1197637109c1de39",
-  "issuedAt": "2026-06-02T09:55:50.836Z",
-  "expiresAt": "2029-06-02T09:55:50.840Z",
-  "signature": "FB7jiqjKTnWQw5AuO6+1vtCCSKPqzlBPOzERFboBmZ4iVwGGplyhtRVUOEuKXu+WSzFxA101y8+SE6xE7HT+6aSL36WJON5Z5wqe0wHaBNCH4iKCx0/7IWJEUWv1+Soe/Tqb2uAWpMWOVM1koNxdYENb780thxdo0GFCumNUMfMylmvwPn8JimkrTugSYajqz7la1NvVh91CEBUJNH+QImghc70UbeH2d4Z5majsk3INiJsD9e+DY22MS7SJW5OwrDhDNtwwUJ+PPYIADm0zLCl/olpUq8dVEi/HIyhIUm9j7DM9E3SRrOAnjvV/DOJ2pr1iPcjb9HjK6B8wy5hBEg=="
+  "issuedAt": "2026-06-11T10:27:57.154Z",
+  "expiresAt": "2027-06-11T10:27:57.154Z",
+  "status": "ACTIVE",
+  "signature": "kdkeYlM3plrdhjluXF18zZTyYAkNd074jroDtwrO9/D+Q7qq2AaIFucdmuwAMXedSMDijlQDVYBw5A2WxaKQS9+Zp4QMXY88mlMEbMQMdQpeARqgUl7OuhkJKZR2nmPoyhydOS0RmcDjsBUnah/ElHEozPKxMpOtlzRVmrpuH3RCE47KowCWBHBu9jjLMWwR/JBpJCbYBJ6/XMzFPLdWBdtBGaYozMHCVj32XNp1EopQuhPQrgFlTYLCzLKTRxTp7ic4duxiQPpdXb5Mn38LLOPIt03uuYAZ27EA3kSklMu2FGDTbtEgpX9teHhSKn+vzWgjgbABT4dBEI2rZn8RsA=="
 }

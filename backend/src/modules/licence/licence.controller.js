@@ -40,13 +40,13 @@ export const getStatut = async (req, res) => {
 
 // ─── POST /licence/activer ────────────────────────────────────────────────────
 // Body attendu : le JSON signé généré par le Super Admin
-// { licenceId, salleId, machineId, issuedAt, expiresAt, signature }
+// { licenceId, nomSalle, machineId, issuedAt, expiresAt, signature }
 
 export const activer = async (req, res) => {
-  const { licenceId, salleId, machineId, issuedAt, expiresAt, signature } = req.body
+  const { licenceId, nomSalle, machineId, issuedAt, expiresAt, signature } = req.body
 
-  if (!licenceId || !salleId || !machineId || !issuedAt || !expiresAt || !signature) {
-    return res.status(400).json({ message: 'JSON de licence incomplet. Champs requis : licenceId, salleId, machineId, issuedAt, expiresAt, signature' })
+  if (!licenceId || !machineId || !issuedAt || !expiresAt || !signature) {
+    return res.status(400).json({ message: 'JSON de licence incomplet. Champs requis : licenceId, nomSalle (optionnel), machineId, issuedAt, expiresAt, signature' })
   }
 
   // Vérifier que le machineId correspond à cette machine
@@ -56,7 +56,7 @@ export const activer = async (req, res) => {
   }
 
   // Vérifier la signature RSA
-  const resultat = verifierLicence({ licenceId, salleId, machineId, issuedAt, expiresAt, signature, status: 'ACTIVE' })
+  const resultat = verifierLicence({ licenceId, nomSalle, machineId, issuedAt, expiresAt, signature, status: 'ACTIVE' })
   if (!resultat.valide) {
     return res.status(400).json({ message: `Licence invalide : ${resultat.raison}` })
   }
@@ -70,7 +70,7 @@ export const activer = async (req, res) => {
 
     const licenceData = {
       licenceId,
-      salleId:   Number(salleId),
+      nomSalle:  nomSalle || null,
       machineId,
       issuedAt:  new Date(issuedAt),
       expiresAt: new Date(expiresAt),

@@ -10,10 +10,12 @@ export const rapportJour = async (req, res) => {
     const fin = new Date()
     fin.setHours(23, 59, 59, 999)
 
-    // Sessions du jour pour ce gérant
+    console.log('[rapport/jour] user:', req.user)
+
+    // Sessions du jour pour la salle du gérant
     const sessions = await prisma.session.findMany({
       where: {
-        gerantId: req.user.id,
+        gerant: { salleId: req.user.salle_id },
         debut: { gte: debut, lte: fin },
         statut: { in: ['TERMINEE', 'ARRETEE', 'ACTIVE'] }
       },
@@ -25,10 +27,10 @@ export const rapportJour = async (req, res) => {
       orderBy: { debut: 'asc' }
     })
 
-    // Recharges du jour faites par ce gérant
+    // Recharges du jour pour la salle du gérant
     const recharges = await prisma.transaction.findMany({
       where: {
-        gerantId: req.user.id,
+        client: { salleId: req.user.salle_id },
         type: 'RECHARGE_GERANT',
         date: { gte: debut, lte: fin }
       },
@@ -78,9 +80,11 @@ export const rapportJour = async (req, res) => {
       parClient[pseudo].montant += s.duree.prix || 0
     })
 
+    const gerant = await prisma.user.findUnique({ where: { id: req.user.id }, select: { pseudo: true } })
+
     return res.json({
       date: debut.toISOString().split('T')[0],
-      gerant: req.user.pseudo,
+      gerant: gerant?.pseudo ?? '',
       resume: {
         totalSessions,
         totalMontantSessions,

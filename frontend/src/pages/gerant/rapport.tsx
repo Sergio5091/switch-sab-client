@@ -1,19 +1,56 @@
 import { useState, useEffect } from "react";
 import AdminLayout from "@/layouts/AdminLayout";
 import { Button } from "@/components/ui/button";
-import { Download, TrendingUp, DollarSign, Clock, Users, Gift, Zap } from "lucide-react";
+import { Download, DollarSign, Clock, Users, Gift, Zap, TrendingUp } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
 import { format } from "date-fns";
 import { fr } from "date-fns/locale";
-import gerantService, { RapportJour } from "@/services/gerantService";
+import { Badge } from "@/components/ui/badge";
+import { cn } from "@/lib/utils";
+import api from "@/services/api";
 
-function StatCard({ icon: Icon, label, value, sub, color }: {
-  icon: React.ElementType;
-  label: string;
-  value: string;
-  sub?: string;
-  color: string;
-}) {
+interface SessionRapport {
+  id: number;
+  client: string;
+  poste: string;
+  categorie: string;
+  duree: string;
+  montant: number;
+  debut: string;
+  fin?: string;
+  statut: string;
+  tempsRestant: number;
+  estBonus: boolean;
+}
+
+interface RechargeRapport {
+  id: number;
+  client: string;
+  telephone: string;
+  montant: number;
+  date: string;
+  creditsActuels: { categorie: string; soldeMinutes: number }[];
+}
+
+interface Rapport {
+  date: string;
+  gerant: string;
+  resume: {
+    totalSessions: number;
+    totalMontantSessions: number;
+    totalMontantRecharges: number;
+    totalMontantJour: number;
+    totalSecondes: string;
+    sessionNormale: number;
+    sessionBonus: number;
+  };
+  parCategorie: Record<string, { nombre: number; montant: number; secondes: number }>;
+  parClient: Record<string, { nombre: number; montant: number; telephone: string; estEnfant: boolean }>;
+  sessions: SessionRapport[];
+  recharges: RechargeRapport[];
+}
+
+function StatCard({ icon: Icon, label, value, sub, color }: { icon: React.ElementType; label: string; value: string; sub?: string; color: string }) {
   return (
     <div className="bg-card border border-border rounded-xl p-4">
       <div className="flex items-center gap-3 mb-2">
@@ -30,85 +67,90 @@ function StatCard({ icon: Icon, label, value, sub, color }: {
 
 export default function GerantRapport() {
   const { toast } = useToast();
-  const [rapport, setRapport] = useState<RapportJour | null>(null);
+  const [rapport, setRapport] = useState<Rapport | null>(null);
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
-    gerantService.getRapportJour()
-      .then(setRapport)
+    api.get('/gerant/rapport/jour')
+      .then(r => setRapport(r.data))
       .catch(() => toast({ title: "Erreur chargement rapport", variant: "destructive" }))
       .finally(() => setLoading(false));
   }, []);
 
   function handleExport() {
     if (!rapport) return;
-    const rechargeRows = (rapport.recharges ?? []).map((r: any) =>
-      `${r.client},${r.date},,Recharge,${r.montant},,,Normal,RECHARGE`
+    const sessionRows = rapport.sessions.map(s =>
+      `SESSION,${s.client},${format(new Date(s.debut), "HH:mm")},${s.fin ? format(new Date(s.fin), "HH:mm") : "En cours"},${s.duree},${s.montant},${s.poste},${s.categorie},${s.estBonus ? "Bonus" : "Normal"},${s.statut}`
     );
-    const csv = ["Client,Date,Fin,Type,Montant,Poste,Catégorie,TypePaiement,Statut", ...rechargeRows].join("\n");
+    const rechargeRows = rapport.recharges.map(r =>
+      `RECHARGE,${r.client},${format(new Date(r.date), "HH:mm")},,,${r.montant},,,Normal,VALIDÉE`
+    );
+    const csv = [
+      `Rapport du ${rapport.date} — Gérant : ${rapport.gerant}`,
+      `Total jour : ${rapport.resume.totalMontantJour} F (Sessions: ${rapport.resume.totalMontantSessions} F | Recharges: ${rapport.resume.totalMontantRecharges} F)`,
+      "",
+      "Type,Client,Début,Fin,Durée,Montant,Poste,Catégorie,Mode,Statut",
+      ...sessionRows,
+      ...rechargeRows,
+    ].join("\n");
     const blob = new Blob([csv], { type: "text/csv" });
     const url = URL.createObjectURL(blob);
     const a = document.createElement("a");
     a.href = url;
-    a.download = `rapport_gerant_${rapport.date}.csv`;
+    a.download = `rapport_${rapport.date}_${rapport.gerant}.csv`;
     a.click();
     URL.revokeObjectURL(url);
     toast({ title: "Rapport CSV exporté" });
   }
 
   const today = new Date();
-  const recharges = rapport?.recharges ?? [];
 
   return (
     <AdminLayout>
       <div className="p-6 space-y-5">
         <div className="flex items-center justify-between">
           <div>
-            <h1 className="text-xl font-bold text-foreground">Mon rapport</h1>
+            <h1 className="text-xl font-bold text-foreground">Rapport du jour</h1>
             <p className="text-sm text-muted-foreground mt-0.5">
               {format(today, "EEEE dd MMMM yyyy", { locale: fr })}
             </p>
           </div>
-          <Button variant="outline" onClick={handleExport} disabled={!rapport} className="gap-1.5" data-testid="button-export">
-            <Download size={15} /> Exporter
+          <Button variant="outline" onClick={handleExport} disabled={!rapport} className="gap-1.5">
+            <Download size={15} /> Exporter CSV
           </Button>
         </div>
 
         {loading ? (
-          <div className="bg-card border border-border rounded-xl px-5 py-12 text-center text-muted-foreground text-sm">
-            Chargement…
-          </div>
-        ) : rapport ? (
+          <div className="bg-card border border-border rounded-xl px-5 py-12 text-center text-muted-foreground text-sm">Chargement…</div>
+        ) : !rapport ? (
+          <div className="bg-card border border-border rounded-xl px-5 py-12 text-center text-muted-foreground text-sm">Aucune donnée disponible</div>
+        ) : (
           <>
             {/* Stats */}
             <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
               <StatCard
-                icon={DollarSign}
-                label="Total du jour"
-                value={`${(rapport.resume.totalMontantJour ?? rapport.resume.totalMontantSessions ?? (rapport.resume as any).totalMontant ?? 0).toLocaleString()} F`}
-                sub={`Sessions: ${(rapport.resume.totalMontantSessions ?? (rapport.resume as any).totalMontant ?? 0).toLocaleString()} F · Recharges: ${(rapport.resume.totalMontantRecharges ?? 0).toLocaleString()} F`}
+                icon={DollarSign} label="Total du jour"
+                value={`${rapport.resume.totalMontantJour.toLocaleString()} F`}
+                sub={`Sessions ${rapport.resume.totalMontantSessions.toLocaleString()} F · Recharges ${rapport.resume.totalMontantRecharges.toLocaleString()} F`}
                 color="bg-primary/10 text-primary"
               />
               <StatCard
-                icon={TrendingUp}
-                label="Sessions"
+                icon={TrendingUp} label="Sessions"
                 value={String(rapport.resume.totalSessions)}
-                sub={`${rapport.resume.sessionNormale} normales`}
+                sub={`${rapport.resume.sessionNormale} normales · ${rapport.resume.sessionBonus} bonus`}
                 color="bg-green-500/10 text-green-400"
               />
               <StatCard
-                icon={Users}
-                label="Clients"
+                icon={Users} label="Clients uniques"
                 value={String(Object.keys(rapport.parClient).length)}
-                sub="clients uniques"
+                sub="aujourd'hui"
                 color="bg-blue-500/10 text-blue-400"
               />
               <StatCard
-                icon={Gift}
-                label="Sessions bonus"
-                value={String(rapport.resume.sessionBonus)}
-                sub={`sur ${rapport.resume.totalSessions} sessions`}
-                color="bg-orange-500/10 text-orange-400"
+                icon={Clock} label="Temps géré"
+                value={rapport.resume.totalSecondes}
+                sub="temps de jeu total"
+                color="bg-purple-500/10 text-purple-400"
               />
             </div>
 
@@ -119,69 +161,94 @@ export default function GerantRapport() {
                   <h2 className="text-sm font-semibold text-foreground">Par catégorie</h2>
                 </div>
                 <div className="divide-y divide-border">
-                  {Object.entries(rapport.parCategorie).map(([nom, data]) => {
-                    const d = data as { nombre: number; montant: number; secondes: number };
-                    return (
-                      <div key={nom} className="flex items-center gap-3 px-5 py-3">
-                        <span className="text-sm font-medium text-foreground flex-1">{nom}</span>
-                        <span className="text-xs text-muted-foreground">{d.nombre} sessions</span>
-                        <span className="text-xs font-semibold text-primary">{d.montant.toLocaleString()} F</span>
-                      </div>
-                    );
-                  })}
+                  {Object.entries(rapport.parCategorie).map(([nom, data]) => (
+                    <div key={nom} className="flex items-center gap-3 px-5 py-3">
+                      <span className="text-sm font-medium text-foreground flex-1">{nom}</span>
+                      <span className="text-xs text-muted-foreground">{data.nombre} sessions · {Math.floor(data.secondes / 60)} min</span>
+                      <span className="text-xs font-semibold text-primary">{data.montant.toLocaleString()} F</span>
+                    </div>
+                  ))}
                 </div>
               </div>
             )}
+
+            {/* Sessions du jour */}
+            <div className="bg-card border border-border rounded-xl overflow-hidden">
+              <div className="px-5 py-4 border-b border-border flex items-center gap-2">
+                <TrendingUp size={14} className="text-green-400" />
+                <h2 className="text-sm font-semibold text-foreground">Sessions ({rapport.sessions.length})</h2>
+                {rapport.sessions.length > 0 && (
+                  <span className="ml-auto text-xs font-semibold text-primary">
+                    {rapport.resume.totalMontantSessions.toLocaleString()} F
+                  </span>
+                )}
+              </div>
+              <div className="divide-y divide-border">
+                {rapport.sessions.length === 0 ? (
+                  <div className="px-5 py-8 text-center text-muted-foreground text-sm">Aucune session aujourd'hui</div>
+                ) : rapport.sessions.map(s => (
+                  <div key={s.id} className={cn("flex items-center gap-3 px-5 py-3", s.estBonus && "bg-primary/5")}>
+                    <div className="flex-1 min-w-0">
+                      <div className="flex items-center gap-2">
+                        <span className="text-sm font-medium text-foreground">{s.client}</span>
+                        {s.estBonus && <Badge className="bg-primary/10 text-primary border-primary/20 text-xs gap-1"><Gift size={9} /> Bonus</Badge>}
+                      </div>
+                      <div className="text-xs text-muted-foreground mt-0.5 flex items-center gap-2">
+                        <Clock size={10} />
+                        {format(new Date(s.debut), "HH:mm")}
+                        {s.fin ? ` → ${format(new Date(s.fin), "HH:mm")}` : " → En cours"}
+                        · {s.duree} · {s.poste} · {s.categorie}
+                      </div>
+                    </div>
+                    <div className="text-right flex-shrink-0">
+                      <div className="text-sm font-bold text-primary">{s.montant.toLocaleString()} F</div>
+                      <Badge className={cn("text-xs", s.statut === "ACTIVE" ? "bg-green-500/10 text-green-400" : "bg-muted text-muted-foreground")}>
+                        {s.statut === "ACTIVE" ? "En cours" : s.statut === "ARRETEE" ? "Arrêtée" : "Terminée"}
+                      </Badge>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            </div>
 
             {/* Recharges du jour */}
             <div className="bg-card border border-border rounded-xl overflow-hidden">
               <div className="px-5 py-4 border-b border-border flex items-center gap-2">
                 <Zap size={14} className="text-yellow-400" />
-                <h2 className="text-sm font-semibold text-foreground">
-                  Recharges du jour ({recharges.length})
-                </h2>
-                {recharges.length > 0 && (
+                <h2 className="text-sm font-semibold text-foreground">Recharges ({rapport.recharges.length})</h2>
+                {rapport.recharges.length > 0 && (
                   <span className="ml-auto text-xs font-semibold text-primary">
-                    Total : {(recharges as any[]).reduce((s: number, r: any) => s + r.montant, 0).toLocaleString()} F
+                    {rapport.resume.totalMontantRecharges.toLocaleString()} F
                   </span>
                 )}
               </div>
               <div className="divide-y divide-border">
-                {recharges.length === 0 ? (
-                  <div className="px-5 py-8 text-center text-muted-foreground text-sm">
-                    Aucune recharge aujourd'hui
-                  </div>
-                ) : (recharges as any[]).map((r: any) => (
-                  <div key={r.id} className="flex items-center gap-3 px-5 py-3" data-testid={`row-recharge-rapport-${r.id}`}>
-                    <div className="w-7 h-7 rounded-lg bg-yellow-500/10 flex items-center justify-center flex-shrink-0">
-                      <DollarSign size={12} className="text-yellow-400" />
+                {rapport.recharges.length === 0 ? (
+                  <div className="px-5 py-8 text-center text-muted-foreground text-sm">Aucune recharge aujourd'hui</div>
+                ) : rapport.recharges.map(r => (
+                  <div key={r.id} className="flex items-center gap-3 px-5 py-3">
+                    <div className="w-8 h-8 rounded-lg bg-yellow-500/10 flex items-center justify-center flex-shrink-0">
+                      <DollarSign size={13} className="text-yellow-400" />
                     </div>
                     <div className="flex-1 min-w-0">
                       <div className="text-sm font-medium text-foreground">{r.client}</div>
-                      <div className="text-xs text-muted-foreground flex items-center gap-1.5 mt-0.5">
+                      <div className="text-xs text-muted-foreground mt-0.5 flex items-center gap-1.5">
                         <Clock size={10} /> {format(new Date(r.date), "HH:mm")}
-                        {r.creditsActuels && r.creditsActuels.filter((c: any) => c.soldeMinutes > 0).length > 0 && (
+                        {r.creditsActuels.filter(c => c.soldeMinutes > 0).length > 0 && (
                           <span>
-                            · Temps restant : {r.creditsActuels
-                              .filter((c: any) => c.soldeMinutes > 0)
-                              .map((c: any) => `${c.soldeMinutes}min (${c.categorie})`)
-                              .join(", ")}
+                            · Solde : {r.creditsActuels.filter(c => c.soldeMinutes > 0).map(c => `${c.soldeMinutes}min ${c.categorie}`).join(", ")}
                           </span>
                         )}
                       </div>
                     </div>
-                    <div className="text-right">
-                      <div className="text-sm font-bold text-green-400">+{r.montant.toLocaleString()} F</div>
+                    <div className="text-sm font-bold text-green-400 flex-shrink-0">
+                      +{r.montant.toLocaleString()} F
                     </div>
                   </div>
                 ))}
               </div>
             </div>
           </>
-        ) : (
-          <div className="bg-card border border-border rounded-xl px-5 py-12 text-center text-muted-foreground text-sm">
-            Aucune donnée disponible
-          </div>
         )}
       </div>
     </AdminLayout>

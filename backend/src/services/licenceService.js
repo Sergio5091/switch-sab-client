@@ -23,7 +23,7 @@ const getPublicKey = () => {
 export const computeHash = (licence) => {
   const raw = [
     licence.licenceId,
-    licence.salleId,
+    licence.nomSalle || '',
     licence.machineId,
     licence.issuedAt instanceof Date ? licence.issuedAt.toISOString() : licence.issuedAt,
     licence.expiresAt instanceof Date ? licence.expiresAt.toISOString() : licence.expiresAt,
@@ -39,7 +39,7 @@ export const verifySignature = (payload, signature) => {
   if (!publicKey) return null // null = pas de clé (pas false)
 
   try {
-    const data = `${payload.licenceId}|${payload.salleId}|${payload.machineId}|${payload.issuedAt}|${payload.expiresAt}`
+    const data = `${payload.licenceId}|${payload.nomSalle || ''}|${payload.machineId}|${payload.issuedAt}|${payload.expiresAt}`
     const verify = createVerify('SHA256')
     verify.update(data)
     verify.end()

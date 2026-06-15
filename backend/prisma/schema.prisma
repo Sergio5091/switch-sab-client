@@ -219,7 +219,8 @@ model Promo {
 model LicenceLocale {
   id        Int      @id @default(autoincrement())
   licenceId String   @unique
-  salleId   Int
+  nomSalle  String?  // Nom de la salle (optionnel)
+  salleId   Int?     // Optionnel - null = pas encore assignée à une salle
   machineId String
   issuedAt  DateTime
   expiresAt DateTime
@@ -228,5 +229,5 @@ model LicenceLocale {
   hash      String   // Hash de contrôle anti-fraude
   createdAt DateTime @default(now())
 
-  salle Salle @relation(fields: [salleId], references: [id])
+  salle Salle? @relation(fields: [salleId], references: [id])
 }
