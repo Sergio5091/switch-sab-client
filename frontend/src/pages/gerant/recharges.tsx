@@ -142,15 +142,28 @@ export default function GerantRecharges() {
     }
     setComplementLoading(true);
     try {
-      // Recharge supplémentaire sur le compte du client
-      const duree = complementDurees.find(d => d.id === Number(complementDureeId));
-      await gerantService.creerRecharge({
-        clientId: Number(complementClientId),
-        categorieId: Number(complementCategId),
-        dureeId: Number(complementDureeId),
-        montant: duree?.prix ?? 0,
-      });
-      toast({ title: "Temps complémentaire ajouté" });
+      // Trouver la session active du client
+      const sessionActive = activeSessions.find(
+        (s: any) => !s.estCoupon && s.clientId === Number(complementClientId)
+      );
+
+      if (sessionActive) {
+        // Prolonger la session en cours (modifie session.fin en temps réel)
+        await api.post(`/gerant/sessions/${sessionActive.id}/prolonger`, {
+          dureeId: Number(complementDureeId),
+        });
+        toast({ title: "Session prolongée ✅", description: "Le timer a été mis à jour en temps réel" });
+      } else {
+        // Pas de session active → simple recharge sur le compte
+        await gerantService.creerRecharge({
+          clientId: Number(complementClientId),
+          categorieId: Number(complementCategId),
+          dureeId: Number(complementDureeId),
+          montant: complementDurees.find(d => d.id === Number(complementDureeId))?.prix ?? 0,
+        });
+        toast({ title: "Crédit ajouté au compte du client" });
+      }
+
       setComplementDialog(false);
       setComplementClientId(""); setComplementDureeId(""); setComplementCategId("");
       loadData();

@@ -102,8 +102,9 @@ model Duree {
   prix        Float
   categorieId Int
 
-  categorie Categorie @relation(fields: [categorieId], references: [id])
-  sessions  Session[]
+  categorie             Categorie              @relation(fields: [categorieId], references: [id])
+  sessions              Session[]
+  sessionAnonymeCoupons SessionAnonymeCoupon[]
 }
 
 model Poste {
@@ -113,8 +114,9 @@ model Poste {
   statut      StatutPoste @default(LIBRE)
   categorieId Int
 
-  categorie Categorie @relation(fields: [categorieId], references: [id])
-  sessions  Session[]
+  categorie             Categorie              @relation(fields: [categorieId], references: [id])
+  sessions              Session[]
+  sessionAnonymeCoupons SessionAnonymeCoupon[]
 }
 
 model Session {
@@ -167,7 +169,29 @@ model Coupon {
   salleId   Int
   createdAt DateTime @default(now())
 
-  salle Salle @relation(fields: [salleId], references: [id])
+  salle          Salle                 @relation(fields: [salleId], references: [id])
+  sessionAnonymeCoupons SessionAnonymeCoupon[]
+}
+
+// Session sans compte — joueur anonyme avec un coupon prépayé
+// Le solde restant est conservé pour une prochaine utilisation du même code
+model SessionAnonymeCoupon {
+  id           Int           @id @default(autoincrement())
+  couponId     Int
+  salleId      Int
+  posteId      Int
+  dureeId      Int
+  secondesUtilisees Int      @default(0)
+  soldeRestant Float         @default(0)  // en FCFA, reliquat après session
+  statut       StatutSession @default(ACTIVE)
+  debut        DateTime      @default(now())
+  fin          DateTime?
+  gerantId     Int
+  createdAt    DateTime      @default(now())
+
+  coupon Coupon @relation(fields: [couponId], references: [id])
+  poste  Poste  @relation(fields: [posteId], references: [id])
+  duree  Duree  @relation(fields: [dureeId], references: [id])
 }
 
 model Bonus {

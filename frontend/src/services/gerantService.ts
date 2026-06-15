@@ -17,13 +17,16 @@ export interface Client {
 
 export interface Session {
   id: number;
-  clientId: number;
+  clientId: number | null;
   clientPseudo?: string;
   posteId: number;
   dureeId: number;
-  fin: string; // finPrevue ISO
+  fin: string;
   statut: 'ACTIVE' | 'ARRETEE' | 'TERMINEE';
   estBonus: boolean;
+  estCoupon?: boolean;
+  codeCoupon?: string;
+  soldeRestant?: number;
   debut: string;
   client: { pseudo: string; telephone: string };
   poste: { id: number; nom: string };

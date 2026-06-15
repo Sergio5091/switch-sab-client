@@ -104,7 +104,7 @@ export default function AdminCoupons() {
       <div class="coupon">
         <div class="valeur">${c.valeur.toLocaleString()} FCFA</div>
         <div class="code">${c.code}</div>
-        <div class="label">SWITCH SAB — Coupon de recharge</div>
+        <div class="label">Switch SAB</div>
       </div>
     `).join("");
     const win = window.open("", "_blank");
@@ -112,13 +112,25 @@ export default function AdminCoupons() {
     win.document.write(`
       <html><head><title>Coupons Switch SAB</title>
       <style>
-        body { margin: 10px; font-family: monospace; }
-        .grid { display: grid; grid-template-columns: repeat(4, 1fr); gap: 10px; }
-        .coupon { border: 2px dashed #f97316; border-radius: 8px; padding: 12px; text-align: center; }
-        .code { font-size: 13px; font-weight: bold; margin: 6px 0; letter-spacing: 2px; }
-        .valeur { font-size: 16px; font-weight: bold; color: #f97316; }
-        .label { font-size: 10px; color: #666; margin-top: 4px; }
-        @media print { body { margin: 5px; } }
+        @page { size: A4; margin: 10mm; }
+        * { box-sizing: border-box; }
+        body { margin: 0; font-family: monospace; }
+        .grid {
+          display: grid;
+          grid-template-columns: repeat(4, 1fr);
+          gap: 4mm;
+          width: 100%;
+        }
+        .coupon {
+          border: 1.5px dashed #f97316;
+          border-radius: 6px;
+          padding: 8px 6px;
+          text-align: center;
+          page-break-inside: avoid;
+        }
+        .valeur { font-size: 13px; font-weight: bold; color: #f97316; margin-bottom: 4px; }
+        .code { font-size: 11px; font-weight: bold; letter-spacing: 2px; }
+        .label { font-size: 9px; color: #888; margin-top: 3px; }
       </style></head>
       <body><div class="grid">${rows}</div></body></html>
     `);

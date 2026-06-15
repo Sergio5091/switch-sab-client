@@ -3,7 +3,8 @@ import { verifyJwt, requireRole } from '../../middlewares/auth.middleware.js'
 
 import { creerClient, listerClients, detailClient, modifierClient } from './clients.controller.js'
 import { creerRecharge, listerRechargesEnAttente, listerHistoriqueRecharges, validerRecharge, appliquerCouponGerant } from './recharges.controller.js'
-import { demarrerSession, arreterSession, listerSessions, detailSession } from './sessions.controller.js'
+import { demarrerSession, arreterSession, listerSessions, detailSession, prolongerSession } from './sessions.controller.js'
+import { demarrerSessionCoupon, arreterSessionCoupon, getSoldeCoupon } from './sessionCoupon.controller.js'
 import { rapportJour, rapportPeriode } from './rapport.controller.js'
 import { listerCategories } from '../admin/categories.controller.js'
 import { listerPostes } from '../admin/postes.controller.js'
@@ -24,14 +25,20 @@ router.patch('/clients/:id',  modifierClient)
 router.post('/recharges',              creerRecharge)
 router.get('/recharges',               listerHistoriqueRecharges)
 router.get('/recharges/en-attente',    listerRechargesEnAttente)
+router.post('/recharges/coupon',       appliquerCouponGerant)        // ← avant /:id
 router.post('/recharges/:id/valider',  validerRecharge)
-router.post('/recharges/coupon',       appliquerCouponGerant)
+
+// ─── SESSIONS ANONYMES (coupon sans compte) — AVANT /:id ──────────────────
+router.get('/sessions/coupon/solde',        getSoldeCoupon)
+router.post('/sessions/coupon',             demarrerSessionCoupon)
+router.post('/sessions/coupon/:id/arreter', arreterSessionCoupon)
 
 // ─── SESSIONS ─────────────────────────────────────────────────────────────
-router.post('/sessions',              demarrerSession)
-router.get('/sessions',               listerSessions)
-router.get('/sessions/:id',           detailSession)
-router.post('/sessions/:id/arreter',  arreterSession)
+router.post('/sessions',               demarrerSession)
+router.get('/sessions',                listerSessions)
+router.get('/sessions/:id',            detailSession)
+router.post('/sessions/:id/arreter',   arreterSession)
+router.post('/sessions/:id/prolonger', prolongerSession)
 
 // ─── CATALOGUE (lecture seule) ────────────────────────────────────────────
 router.get('/categories',              listerCategories)

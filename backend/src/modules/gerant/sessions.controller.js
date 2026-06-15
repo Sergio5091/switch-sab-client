@@ -329,7 +329,40 @@ export const listerSessions = async (req, res) => {
       orderBy: { debut: 'desc' }
     })
 
-    return res.json(sessions)
+    // Inclure les sessions coupon actives
+    let sessionsCoupon = []
+    if (prisma.sessionAnonymeCoupon) {
+      const raw = await prisma.sessionAnonymeCoupon.findMany({
+        where: {
+          salleId: req.user.salle_id,
+          statut: { in: ['ACTIVE', 'ARRETEE'] }
+        },
+        include: {
+          coupon: { select: { code: true, valeur: true } },
+          poste: { select: { id: true, nom: true } },
+          duree: { select: { libelle: true, secondes: true, prix: true } },
+        },
+        orderBy: { debut: 'desc' }
+      })
+
+      sessionsCoupon = raw.map(s => ({
+        id: s.id,
+        estCoupon: true,          // flag pour distinguer côté frontend
+        codeCoupon: s.coupon.code,
+        clientId: null,
+        posteId: s.posteId,
+        client: { pseudo: `Coupon ${s.coupon.code}`, telephone: '' },
+        poste: s.poste,
+        duree: s.duree,
+        fin: s.fin,
+        statut: s.statut,
+        estBonus: false,
+        debut: s.debut,
+        soldeRestant: s.soldeRestant,
+      }))
+    }
+
+    return res.json([...sessions, ...sessionsCoupon])
   } catch (err) {
     console.error('[gerant/sessions GET]', err)
     return res.status(500).json({
@@ -466,3 +499,77 @@ async function endSessionAuto(sessionId, posteId) {
 // ─── Exporter pour utilisation externe ─────────────────────────────────
 
 export const getSessionTimeouts = () => sessionTimeouts
+
+// ─── POST /gerant/sessions/:id/prolonger → Prolonger une session active ──────
+// Ajoute du temps à une session en cours (modifie session.fin + relance le timer)
+
+export const prolongerSession = async (req, res) => {
+  const sessionId = Number(req.params.id)
+  const { dureeId } = req.body
+
+  if (!dureeId) return res.status(400).json({ message: 'dureeId requis' })
+
+  try {
+    const session = await prisma.session.findFirst({
+      where: { id: sessionId, statut: 'ACTIVE', gerant: { salleId: req.user.salle_id } },
+      include: { client: true, poste: true, duree: true }
+    })
+    if (!session) return res.status(404).json({ message: 'Session active introuvable' })
+
+    const dureeSupp = await prisma.duree.findFirst({
+      where: { id: Number(dureeId), categorieId: session.poste.categorieId }
+    })
+    if (!dureeSupp) return res.status(404).json({ message: 'Durée introuvable' })
+
+    // Vérifier que le client a le crédit suffisant
+    const credit = await prisma.credit.findFirst({
+      where: { clientId: session.clientId, categorieId: session.poste.categorieId }
+    })
+    if (!credit || credit.solde < dureeSupp.secondes) {
+      return res.status(400).json({ message: 'Crédit insuffisant pour prolonger' })
+    }
+
+    // Calculer la nouvelle fin
+    const tempsRestantActuel = Math.max(0, Math.floor((new Date(session.fin).getTime() - Date.now()) / 1000))
+    const nouvelleFin = new Date(Date.now() + (tempsRestantActuel + dureeSupp.secondes) * 1000)
+
+    await prisma.$transaction(async (tx) => {
+      // Débiter le crédit
+      await tx.credit.update({
+        where: { id: credit.id },
+        data: { solde: credit.solde - dureeSupp.secondes }
+      })
+      // Mettre à jour la fin de session
+      await tx.session.update({
+        where: { id: sessionId },
+        data: { fin: nouvelleFin, tempsRestant: tempsRestantActuel + dureeSupp.secondes }
+      })
+    })
+
+    // Annuler l'ancien timer et en lancer un nouveau
+    if (sessionTimeouts[sessionId]) {
+      clearTimeout(sessionTimeouts[sessionId])
+      delete sessionTimeouts[sessionId]
+    }
+    scheduleSessionEnd(sessionId, session.poste.id, (tempsRestantActuel + dureeSupp.secondes) * 1000)
+
+    // Notifier le frontend
+    getIO().emit('session:prolonged', {
+      sessionId,
+      posteId: session.poste.id,
+      nouvelleFin,
+      dureeAjoutee: dureeSupp.libelle
+    })
+
+    logger.info(`Session ${sessionId} prolongée de ${dureeSupp.libelle} pour ${session.client.pseudo}`)
+
+    return res.json({
+      message: `Session prolongée de ${dureeSupp.libelle}`,
+      nouvelleFin,
+      tempsRestant: tempsRestantActuel + dureeSupp.secondes
+    })
+  } catch (err) {
+    console.error('[gerant/sessions/:id/prolonger POST]', err)
+    return res.status(500).json({ message: `Erreur serveur : ${err.message}` })
+  }
+}
