@@ -8,6 +8,7 @@ import { ShieldAlert, X } from "lucide-react";
 
 import LoginPage from "@/pages/login";
 import LicencePage from "@/pages/admin/licence";
+import SetupSallePage from "@/pages/setup/salle";
 import NotFound from "@/pages/not-found";
 
 // import SuperAdminDashboard from "@/pages/superadmin/dashboard";
@@ -88,14 +89,22 @@ function FraudeAlert() {
 }
 
 function RoleRedirect() {
-  const { currentUser, licenceStatut, licenceLoaded } = useApp();
+  const { currentUser, licenceStatut, salleConfiguree } = useApp();
   if (!currentUser) return <Redirect to="/login" />;
-  
-  // Ne rediriger vers licence que si on a fini de charger la licence ET qu'elle est invalide
-  if (licenceLoaded && licenceStatut?.statut !== "ACTIVE") {
+
+  // Première installation : salle pas encore configurée
+  if (currentUser.role === "admin" && salleConfiguree === false) {
+    return <Redirect to="/setup/salle" />;
+  }
+
+  // Licence invalide ou expirée (on attend que licenceStatut soit chargé)
+  if (licenceStatut !== null && licenceStatut.statut !== "ACTIVE") {
     return <Redirect to="/admin/licence" />;
   }
-  
+
+  // licenceStatut encore null (chargement en cours) → ne pas rediriger
+  if (licenceStatut === null) return null;
+
   switch (currentUser.role) {
     case "superadmin": return <Redirect to="/superadmin/dashboard" />;
     case "admin": return <Redirect to="/admin/dashboard" />;
@@ -112,20 +121,16 @@ function ProtectedRoute({
   component: React.ComponentType;
   roles: string[];
 }) {
-  const { currentUser, licenceStatut, licenceLoaded } = useApp();
-  if (!currentUser) return <Redirect to="/login" />;
-  if (!roles.includes(currentUser.role)) return <RoleRedirect />;
-  
-  // Pour les routes admin, vérifier la licence (seulement si on a fini de charger)
-  if (licenceLoaded && roles.includes("admin") && licenceStatut?.statut !== "ACTIVE") {
+
+  // Pour les routes admin, vérifier la licence (attendre que licenceStatut soit chargé)
+  if (roles.includes("admin") && licenceStatut !== null && licenceStatut.statut !== "ACTIVE") {
     return <Redirect to="/admin/licence" />;
   }
-  
+
   return <Component />;
 }
 
 function LicenseRequiredRoute({ component: Component }: { component: React.ComponentType }) {
-  const { currentUser } = useApp();
   if (!currentUser) return <Redirect to="/login" />;
   return <Component />;
 }
@@ -142,6 +147,9 @@ function Router() {
     <Switch>
       <Route path="/" component={RoleRedirect} />
       <Route path="/login" component={LoginGuard} />
+
+      {/* Setup première installation */}
+      <Route path="/setup/salle" component={SetupSallePage} />
 
       {/* Licence activation route - accessible seulement si connecté */}
       <Route path="/admin/licence">

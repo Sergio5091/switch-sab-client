@@ -59,7 +59,8 @@ export const requireLicence = (req, res, next) => {
   const exemptee =
     originalUrl === '/api/auth/login'      ||
     originalUrl === '/api/auth/register'   ||
-    originalUrl.startsWith('/api/licence')
+    originalUrl.startsWith('/api/licence') ||
+    originalUrl.startsWith('/api/setup')
 
   if (exemptee) {
     console.log('[requireLicence] Route exemptée')

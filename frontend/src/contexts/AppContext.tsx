@@ -26,7 +26,7 @@ export interface Utilisateur {
 
 interface AppContextType {
   currentUser: Utilisateur | null;
-  login: (email: string, password: string) => Promise<{ success: boolean; licenceRequired: boolean }>;
+  login: (email: string, password: string) => Promise<{ success: boolean; licenceRequired: boolean; salleRequired: boolean }>;
   logout: () => void;
   licenceStatut: LicenceStatut | null;
   checkLicenceStatut: () => Promise<LicenceStatut | null>;
@@ -34,7 +34,8 @@ interface AppContextType {
   fraudeDetectee: boolean;
   messageFraude: string;
   resetFraude: () => void;
-  licenceLoaded: boolean;
+  salleConfiguree: boolean | null;
+  checkSetupStatut: () => Promise<boolean>;
 }
 
 const AppContext = createContext<AppContextType | null>(null);
@@ -52,11 +53,22 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
   const [licenceStatut, setLicenceStatut] = useState<LicenceStatut | null>(null);
   const [fraudeDetectee, setFraudeDetectee] = useState(false);
   const [messageFraude, setMessageFraude] = useState("");
-  const [licenceLoaded, setLicenceLoaded] = useState(false);
+  const [salleConfiguree, setSalleConfiguree] = useState<boolean | null>(null);
 
   useEffect(() => {
     if (currentUser) {
       checkLicenceStatut();
+    }
+  }, []);
+
+  const checkSetupStatut = useCallback(async (): Promise<boolean> => {
+    try {
+      const response = await axiosInstance.get<{ salleConfiguree: boolean }>("/setup/statut");
+      setSalleConfiguree(response.data.salleConfiguree);
+      return response.data.salleConfiguree;
+    } catch {
+      setSalleConfiguree(false);
+      return false;
     }
   }, []);
 
@@ -122,7 +134,7 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
     setMessageFraude("");
   }, []);
 
-  const login = useCallback(async (email: string, password: string): Promise<{ success: boolean; licenceRequired: boolean }> => {
+  const login = useCallback(async (email: string, password: string): Promise<{ success: boolean; licenceRequired: boolean; salleRequired: boolean }> => {
     try {
       const response = await axiosInstance.post('/auth/login', {
         identifiant: email,
@@ -132,31 +144,45 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
       if (response.data?.token && response.data?.user) {
         const u = response.data.user;
         const user: Utilisateur = {
-          id:     u.id,
-          nom:    u.nom ?? "",
-          prenom: u.prenom ?? "",
-          pseudo: u.pseudo,
-          email:  u.email ?? "",
-          phone:  u.telephone ?? "",
-          role:   (u.role as string).toLowerCase() as Role,
+          id:      u.id,
+          nom:     u.nom ?? "",
+          prenom:  u.prenom ?? "",
+          pseudo:  u.pseudo,
+          email:   u.email ?? "",
+          phone:   u.telephone ?? "",
+          role:    (u.role as string).toLowerCase() as Role,
           salleId: u.salleId ?? 1,
-          actif:  u.active,
+          actif:   u.active,
         };
-        setCurrentUser(user);
-        localStorage.setItem("switch_sab_user", JSON.stringify(user));
+
+        // Stocker le token AVANT les vérifications (nécessaire pour les appels API suivants)
         localStorage.setItem("authToken", response.data.token);
 
-        const statut = await checkLicenceStatut();
-        const licenceRequired = statut?.statut !== "ACTIVE";
+        // Vérifier setup salle (seulement pour admin) — AVANT setCurrentUser
+        let salleRequired = false;
+        if ((u.role as string).toLowerCase() === "admin") {
+          salleRequired = !(await checkSetupStatut());
+        }
 
-        return { success: true, licenceRequired };
+        // Vérifier licence — AVANT setCurrentUser
+        const statut = await checkLicenceStatut();
+        // licenceRequired seulement si on a une réponse explicite invalide
+        // (si statut null = erreur réseau, on laisse RoleRedirect décider après le re-render)
+        const licenceRequired = !salleRequired && statut !== null && statut.statut !== "ACTIVE";
+
+        // Mettre à jour le state APRÈS toutes les vérifications pour éviter
+        // un re-render prématuré qui déclencherait RoleRedirect avec un état incomplet
+        setCurrentUser(user);
+        localStorage.setItem("switch_sab_user", JSON.stringify(user));
+
+        return { success: true, licenceRequired, salleRequired };
       }
       throw new Error('Réponse invalide du serveur');
     } catch (error: any) {
       const message = error.response?.data?.message || error.message || 'Erreur de connexion. Vérifiez que le serveur est démarré.';
       throw new Error(message);
     }
-  }, [checkLicenceStatut]);
+  }, [checkLicenceStatut, checkSetupStatut]);
 
   const logout = useCallback(() => {
     setCurrentUser(null);
@@ -169,7 +195,7 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
       currentUser, login, logout,
       licenceStatut, checkLicenceStatut, activerLicence,
       fraudeDetectee, messageFraude, resetFraude,
-      licenceLoaded,
+      salleConfiguree, checkSetupStatut,
     }}>
       {children}
     </AppContext.Provider>

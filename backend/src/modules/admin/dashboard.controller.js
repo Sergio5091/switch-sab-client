@@ -24,7 +24,11 @@ export const getDashboardStats = async (req, res) => {
 
     // 2. Compter les postes + postes actifs
     const postes = await prisma.poste.findMany({
-      where: { categorie: { salleId } },
+      where: { 
+        categorie: { 
+          salleId: salleId 
+        } 
+      },
       select: { id: true, statut: true }
     })
     const postesActifs = postes.filter(p => p.statut === 'OCCUPE').length
