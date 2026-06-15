@@ -9,7 +9,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { z } from "zod";
-import { Plus, Pencil, Trash2, Monitor } from "lucide-react";
+import { Plus, Pencil, Trash2, Monitor, Tag } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
 import { Badge } from "@/components/ui/badge";
 import adminService, { Poste, Categorie } from "@/services/adminService";
@@ -89,31 +89,50 @@ export default function AdminPostes() {
           </Button>
         </div>
 
-        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
-          {postes.map(p => {
-            const cat = categories.find(c => c.id === p.categorieId);
+        <div className="space-y-6">
+          {categories.length === 0 ? (
+            <div className="bg-card border border-border rounded-xl px-5 py-10 text-center text-muted-foreground text-sm">
+              Aucune catégorie. Créez d'abord une catégorie.
+            </div>
+          ) : categories.map(cat => {
+            const catPostes = postes.filter(p => p.categorieId === cat.id);
             return (
-              <div key={p.id} className="bg-card border border-border rounded-xl p-4" data-testid={`card-poste-${p.id}`}>
-                <div className="flex items-start justify-between mb-3">
-                  <div className="flex items-center gap-2">
-                    <div className="w-10 h-10 rounded-lg bg-muted flex items-center justify-center">
-                      <Monitor size={18} className="text-muted-foreground" />
-                    </div>
-                    <div>
-                      <div className="font-bold text-foreground">{p.nom}</div>
-                      <div className="text-xs text-muted-foreground">{cat?.nom ?? "—"}</div>
-                    </div>
-                  </div>
-                  <div className="flex gap-1">
-                    <Button variant="ghost" size="sm" onClick={() => openEdit(p)} data-testid={`button-edit-poste-${p.id}`}><Pencil size={13} /></Button>
-                    <Button variant="ghost" size="sm" className="text-destructive hover:text-destructive" onClick={() => setDeleteId(p.id)} data-testid={`button-delete-poste-${p.id}`}><Trash2 size={13} /></Button>
-                  </div>
+              <div key={cat.id} className="space-y-3">
+                <div className="flex items-center gap-2">
+                  <Tag size={14} className="text-muted-foreground" />
+                  <h2 className="text-sm font-semibold text-foreground">{cat.nom}</h2>
+                  <span className="text-xs text-muted-foreground">({catPostes.length} poste{catPostes.length !== 1 ? "s" : ""})</span>
                 </div>
-                <div className="flex items-center gap-2 flex-wrap">
-                  <Badge className={p.statut === "LIBRE" ? "bg-muted text-muted-foreground text-xs" : "bg-green-500/10 text-green-400 border-green-500/20 text-xs"}>
-                    {p.statut === "LIBRE" ? "Libre" : "Occupé"}
-                  </Badge>
-                </div>
+                {catPostes.length === 0 ? (
+                  <div className="bg-card border border-dashed border-border rounded-xl px-5 py-6 text-center text-muted-foreground text-xs">
+                    Aucun poste dans cette catégorie
+                  </div>
+                ) : (
+                  <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
+                    {catPostes.map(p => (
+                      <div key={p.id} className="bg-card border border-border rounded-xl p-4" data-testid={`card-poste-${p.id}`}>
+                        <div className="flex items-start justify-between mb-3">
+                          <div className="flex items-center gap-2">
+                            <div className="w-10 h-10 rounded-lg bg-muted flex items-center justify-center">
+                              <Monitor size={18} className="text-muted-foreground" />
+                            </div>
+                            <div>
+                              <div className="font-bold text-foreground">{p.nom}</div>
+                              <div className="text-xs text-muted-foreground">{cat.nom}</div>
+                            </div>
+                          </div>
+                          <div className="flex gap-1">
+                            <Button variant="ghost" size="sm" onClick={() => openEdit(p)} data-testid={`button-edit-poste-${p.id}`}><Pencil size={13} /></Button>
+                            <Button variant="ghost" size="sm" className="text-destructive hover:text-destructive" onClick={() => setDeleteId(p.id)} data-testid={`button-delete-poste-${p.id}`}><Trash2 size={13} /></Button>
+                          </div>
+                        </div>
+                        <Badge className={p.statut === "LIBRE" ? "bg-muted text-muted-foreground text-xs" : "bg-green-500/10 text-green-400 border-green-500/20 text-xs"}>
+                          {p.statut === "LIBRE" ? "Libre" : "Occupé"}
+                        </Badge>
+                      </div>
+                    ))}
+                  </div>
+                )}
               </div>
             );
           })}

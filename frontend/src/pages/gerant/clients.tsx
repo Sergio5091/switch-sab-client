@@ -8,7 +8,7 @@ import { Switch } from "@/components/ui/switch";
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { z } from "zod";
-import { Plus, Search, User, Phone, Gift, Clock, Lock } from "lucide-react";
+import { Plus, Search, User, Phone, Gift, Clock, Lock, Share2 } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
 import { Badge } from "@/components/ui/badge";
 import gerantService, { Client } from "@/services/gerantService";
@@ -16,7 +16,7 @@ import gerantService, { Client } from "@/services/gerantService";
 const schemaCreate = z.object({
   pseudo: z.string().min(2, "Pseudo requis"),
   motDePasse: z.string().min(6, "Mot de passe requis (min 6 caractères)"),
-  telephone: z.string().optional(),
+  telephone: z.string().min(8, "Numéro de téléphone requis"),
   estEnfant: z.boolean(),
   codeParental: z.string().optional(),
 });
@@ -46,8 +46,7 @@ export default function GerantClients() {
   const formCreate = useForm<CreateValues>({
     resolver: zodResolver(schemaCreate),
     defaultValues: { pseudo: "", motDePasse: "", telephone: "", estEnfant: false, codeParental: "" },
-  });
-  const formEdit = useForm<EditValues>({
+  });  const formEdit = useForm<EditValues>({
     resolver: zodResolver(schemaEdit),
     defaultValues: { pseudo: "", telephone: "", nom: "", prenom: "", estEnfant: false, codeParental: "", active: true },
   });
@@ -70,14 +69,17 @@ export default function GerantClients() {
 
   async function onSubmitCreate(values: CreateValues) {
     try {
-      await gerantService.createClient({
+      const created = await gerantService.createClient({
         pseudo: values.pseudo,
         motDePasse: values.motDePasse,
-        telephone: values.telephone || undefined,
+        telephone: values.telephone,
         estEnfant: values.estEnfant,
         codeParental: values.codeParental || undefined,
       });
-      toast({ title: "Client créé", description: `Pseudo : ${values.pseudo} — Mot de passe : ${values.motDePasse}` });
+      toast({
+        title: "Client créé",
+        description: `Pseudo : ${values.pseudo} — Tél : ${values.telephone} — Code parrainage : ${values.telephone || values.pseudo}`,
+      });
       gerantService.getClients().then(setClients);
       setOpen(false);
     } catch (err: any) {
@@ -136,6 +138,9 @@ export default function GerantClients() {
                       <Phone size={10} /> {c.telephone}
                     </div>
                   )}
+                  <div className="flex items-center gap-1 text-xs text-muted-foreground mt-0.5">
+                    <Share2 size={10} /> Code parrainage : <span className="font-mono font-semibold text-primary">{c.telephone || c.pseudo}</span>
+                  </div>
                 </div>
                 <div className="flex items-center gap-3 flex-shrink-0 text-xs text-muted-foreground">
                   {c.credits?.filter(cr => cr.solde > 0).map(cr => (
@@ -180,8 +185,10 @@ export default function GerantClients() {
                 )} />
                 <FormField control={formCreate.control} name="telephone" render={({ field }) => (
                   <FormItem>
-                    <FormLabel className="flex items-center gap-1.5"><Phone size={11} />WhatsApp</FormLabel>
+                    <FormLabel className="flex items-center gap-1.5"><Phone size={11} />Téléphone <span className="text-destructive">*</span></FormLabel>
                     <FormControl><Input {...field} placeholder="+229 07XXXXXXXX" /></FormControl>
+                    <p className="text-xs text-muted-foreground">Utilisé comme code de parrainage</p>
+                    <FormMessage />
                   </FormItem>
                 )} />
                 <FormField control={formCreate.control} name="estEnfant" render={({ field }) => (

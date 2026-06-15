@@ -75,6 +75,7 @@ export default function AdminCoupons() {
   const [valeur, setValeur] = useState("500");
   const [count, setCount] = useState("10");
   const [selectedCoupon, setSelectedCoupon] = useState<Coupon | null>(null);
+  const printAllRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
     adminService.getCoupons().then(setCoupons).catch(() => toast({ title: "Erreur chargement coupons", variant: "destructive" }));
@@ -93,9 +94,42 @@ export default function AdminCoupons() {
     }
   }
 
+  function handlePrintBatch(count: number) {
+    const actifs = coupons.filter(c => !c.utilise).slice(0, count);
+    if (actifs.length === 0) {
+      toast({ title: "Aucun coupon actif à imprimer", variant: "destructive" });
+      return;
+    }
+    const rows = actifs.map(c => `
+      <div class="coupon">
+        <div class="valeur">${c.valeur.toLocaleString()} FCFA</div>
+        <div class="code">${c.code}</div>
+        <div class="label">SWITCH SAB — Coupon de recharge</div>
+      </div>
+    `).join("");
+    const win = window.open("", "_blank");
+    if (!win) return;
+    win.document.write(`
+      <html><head><title>Coupons Switch SAB</title>
+      <style>
+        body { margin: 10px; font-family: monospace; }
+        .grid { display: grid; grid-template-columns: repeat(4, 1fr); gap: 10px; }
+        .coupon { border: 2px dashed #f97316; border-radius: 8px; padding: 12px; text-align: center; }
+        .code { font-size: 13px; font-weight: bold; margin: 6px 0; letter-spacing: 2px; }
+        .valeur { font-size: 16px; font-weight: bold; color: #f97316; }
+        .label { font-size: 10px; color: #666; margin-top: 4px; }
+        @media print { body { margin: 5px; } }
+      </style></head>
+      <body><div class="grid">${rows}</div></body></html>
+    `);
+    win.document.close();
+    win.print();
+    win.close();
+    toast({ title: `${actifs.length} coupons envoyés à l'imprimante` });
+  }
+
   const actifs = coupons.filter(c => !c.utilise);
   const utilises = coupons.filter(c => c.utilise);
-
   return (
     <AdminLayout>
       <div className="p-6 space-y-6">
@@ -128,6 +162,23 @@ export default function AdminCoupons() {
               <Ticket size={15} /> Générer
             </Button>
           </div>
+          {actifs.length > 0 && (
+            <div className="flex items-center gap-2 pt-2 border-t border-border flex-wrap">
+              <span className="text-xs text-muted-foreground">{actifs.length} coupons actifs disponibles à l'impression :</span>
+              <Button variant="outline" size="sm" onClick={() => handlePrintBatch(10)} className="gap-1.5 text-xs">
+                <Printer size={13} /> 10 codes
+              </Button>
+              <Button variant="outline" size="sm" onClick={() => handlePrintBatch(20)} className="gap-1.5 text-xs">
+                <Printer size={13} /> 20 codes
+              </Button>
+              <Button variant="outline" size="sm" onClick={() => handlePrintBatch(40)} className="gap-1.5 text-xs" data-testid="button-print-40">
+                <Printer size={13} /> 40 codes
+              </Button>
+              <Button variant="outline" size="sm" onClick={() => handlePrintBatch(actifs.length)} className="gap-1.5 text-xs">
+                <Printer size={13} /> Tout ({actifs.length})
+              </Button>
+            </div>
+          )}
         </div>
 
         {/* Liste */}

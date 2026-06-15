@@ -84,11 +84,9 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
         setMessageFraude(statut.message);
       }
 
-      setLicenceLoaded(true);
       return statut;
     } catch (error) {
       console.error("Erreur vérification licence:", error);
-      setLicenceLoaded(true);
       return null;
     }
   }, []);

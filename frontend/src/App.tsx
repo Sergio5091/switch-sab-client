@@ -121,6 +121,10 @@ function ProtectedRoute({
   component: React.ComponentType;
   roles: string[];
 }) {
+  const { currentUser, licenceStatut } = useApp();
+
+  if (!currentUser) return <Redirect to="/login" />;
+  if (!roles.includes(currentUser.role)) return <RoleRedirect />;
 
   // Pour les routes admin, vérifier la licence (attendre que licenceStatut soit chargé)
   if (roles.includes("admin") && licenceStatut !== null && licenceStatut.statut !== "ACTIVE") {
@@ -131,6 +135,7 @@ function ProtectedRoute({
 }
 
 function LicenseRequiredRoute({ component: Component }: { component: React.ComponentType }) {
+  const { currentUser } = useApp();
   if (!currentUser) return <Redirect to="/login" />;
   return <Component />;
 }

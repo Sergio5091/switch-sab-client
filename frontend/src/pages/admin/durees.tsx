@@ -14,7 +14,7 @@ import adminService, { Duree, Categorie } from "@/services/adminService";
 
 const schema = z.object({
   libelle: z.string().min(1, "Libellé requis"),
-  secondes: z.coerce.number().min(1, "Secondes requises"),
+  minutes: z.coerce.number().min(1, "Durée requise (min 1 minute)"),
   prix: z.coerce.number().min(1, "Prix requis"),
 });
 type FormValues = z.infer<typeof schema>;
@@ -41,22 +41,23 @@ export default function AdminDurees() {
 
   function openCreate() {
     setEditing(null);
-    form.reset({ libelle: "", secondes: 3600, prix: 500 });
+    form.reset({ libelle: "", minutes: 60, prix: 500 });
     setOpen(true);
   }
   function openEdit(d: Duree) {
     setEditing(d);
-    form.reset({ libelle: d.libelle, secondes: d.secondes, prix: d.prix });
+    form.reset({ libelle: d.libelle, minutes: Math.round(d.secondes / 60), prix: d.prix });
     setOpen(true);
   }
   async function onSubmit(values: FormValues) {
+    const secondes = values.minutes * 60;
     try {
       if (editing) {
-        const updated = await adminService.updateDuree(editing.id, values);
+        const updated = await adminService.updateDuree(editing.id, { libelle: values.libelle, secondes, prix: values.prix });
         setDurees(prev => prev.map(d => d.id === editing.id ? updated : d));
         toast({ title: "Tarif mis à jour" });
       } else {
-        const created = await adminService.createDuree(catId, values);
+        const created = await adminService.createDuree(catId, { libelle: values.libelle, secondes, prix: values.prix });
         setDurees(prev => [...prev, created]);
         toast({ title: "Tarif ajouté" });
       }
@@ -138,10 +139,10 @@ export default function AdminDurees() {
                     <FormMessage />
                   </FormItem>
                 )} />
-                <FormField control={form.control} name="secondes" render={({ field }) => (
+                <FormField control={form.control} name="minutes" render={({ field }) => (
                   <FormItem>
-                    <FormLabel>Durée en secondes</FormLabel>
-                    <FormControl><Input {...field} type="number" min={1} data-testid="input-secondes" /></FormControl>
+                    <FormLabel>Durée (en minutes)</FormLabel>
+                    <FormControl><Input {...field} type="number" min={1} placeholder="60" data-testid="input-minutes" /></FormControl>
                     <FormMessage />
                   </FormItem>
                 )} />

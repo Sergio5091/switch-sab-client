@@ -4,12 +4,14 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Label } from "@/components/ui/label";
-import { DollarSign, Search, Ticket, Zap, CheckCircle2, History, Clock } from "lucide-react";
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "@/components/ui/dialog";
+import { DollarSign, Search, Ticket, Zap, CheckCircle2, History, Clock, Monitor, Plus } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
 import { Badge } from "@/components/ui/badge";
 import { format } from "date-fns";
 import { fr } from "date-fns/locale";
-import gerantService, { Client, Categorie, Duree, Recharge } from "@/services/gerantService";
+import gerantService, { Client, Categorie, Duree, Recharge, Poste } from "@/services/gerantService";
+import api from "@/services/api";
 
 const TYPE_LABELS: Record<string, string> = {
   RECHARGE_GERANT: "Gérant",
@@ -22,28 +24,49 @@ export default function GerantRecharges() {
   const [clients, setClients] = useState<Client[]>([]);
   const [categories, setCategories] = useState<Categorie[]>([]);
   const [durees, setDurees] = useState<Duree[]>([]);
+  const [postes, setPostes] = useState<Poste[]>([]);
   const [rechargesAttente, setRechargesAttente] = useState<Recharge[]>([]);
   const [historique, setHistorique] = useState<any[]>([]);
 
   const [clientId, setClientId] = useState("");
   const [categorieId, setCategorieId] = useState("");
   const [dureeId, setDureeId] = useState("");
-  const [montant, setMontant] = useState("");
   const [search, setSearch] = useState("");
   const [searchHisto, setSearchHisto] = useState("");
   const [loading, setLoading] = useState(false);
+
+  // Après recharge : afficher postes dispo + complément temps
+  const [showPostes, setShowPostes] = useState(false);
+  const [lastRechargeClientId, setLastRechargeClientId] = useState<number | null>(null);
+  const [lastRechargeCategId, setLastRechargeCategId] = useState<number | null>(null);
+  const [couponCode, setCouponCode] = useState("");
+  const [couponClientId, setCouponClientId] = useState("");
+  const [couponLoading, setCouponLoading] = useState(false);
+
+  // Complément de temps sur session active
+  const [complementDialog, setComplementDialog] = useState(false);
+  const [complementClientId, setComplementClientId] = useState("");
+  const [complementDureeId, setComplementDureeId] = useState("");
+  const [complementCategId, setComplementCategId] = useState("");
+  const [complementDurees, setComplementDurees] = useState<Duree[]>([]);
+  const [complementLoading, setComplementLoading] = useState(false);
+  const [activeSessions, setActiveSessions] = useState<any[]>([]);
 
   function loadData() {
     Promise.all([
       gerantService.getClients(),
       gerantService.getCategories(),
+      gerantService.getPostesDisponibles(),
       gerantService.getRechargesEnAttente(),
       gerantService.getHistoriqueRecharges(),
-    ]).then(([c, cat, r, h]) => {
+      gerantService.getSessions(),
+    ]).then(([c, cat, p, r, h, s]) => {
       setClients(c);
       setCategories(cat);
+      setPostes(p);
       setRechargesAttente(r);
       setHistorique(h);
+      setActiveSessions(s.filter((sess: any) => sess.statut === 'ACTIVE'));
     });
   }
 
@@ -55,16 +78,23 @@ export default function GerantRecharges() {
     setDureeId("");
   }, [categorieId]);
 
+  useEffect(() => {
+    if (!complementCategId) { setComplementDurees([]); setComplementDureeId(""); return; }
+    gerantService.getDurees(Number(complementCategId)).then(setComplementDurees);
+    setComplementDureeId("");
+  }, [complementCategId]);
+
   const selectedClient = clients.find(c => c.id === Number(clientId));
   const selectedDuree = durees.find(d => d.id === Number(dureeId));
+  const postesDispo = postes.filter(p => p.categorieId === lastRechargeCategId && p.statut === 'LIBRE');
 
   async function handleRecharge() {
     if (!clientId || !categorieId || !dureeId) {
       toast({ title: "Sélectionner client, catégorie et durée", variant: "destructive" });
       return;
     }
-    const m = Number(montant) || selectedDuree?.prix || 0;
-    if (!m) { toast({ title: "Montant invalide", variant: "destructive" }); return; }
+    const m = selectedDuree?.prix || 0;
+    if (!m) { toast({ title: "Durée sans prix", variant: "destructive" }); return; }
 
     setLoading(true);
     try {
@@ -75,12 +105,59 @@ export default function GerantRecharges() {
         montant: m,
       });
       toast({ title: `Compte de ${selectedClient?.pseudo} rechargé — +${selectedDuree?.libelle}` });
-      setClientId(""); setCategorieId(""); setDureeId(""); setMontant("");
+      setLastRechargeClientId(Number(clientId));
+      setLastRechargeCategId(Number(categorieId));
+      setShowPostes(true);
+      setClientId(""); setCategorieId(""); setDureeId("");
       loadData();
     } catch (err: any) {
       toast({ title: err.response?.data?.message ?? "Erreur recharge", variant: "destructive" });
     } finally {
       setLoading(false);
+    }
+  }
+
+  async function handleLancerCoupon() {
+    if (!couponCode || !couponClientId) {
+      toast({ title: "Saisissez le code coupon et sélectionnez le client", variant: "destructive" });
+      return;
+    }
+    setCouponLoading(true);
+    try {
+      await api.post('/gerant/recharges/coupon', { code: couponCode, clientId: Number(couponClientId) });
+      toast({ title: "Coupon appliqué avec succès" });
+      setCouponCode(""); setCouponClientId("");
+      loadData();
+    } catch (err: any) {
+      toast({ title: err.response?.data?.message ?? "Erreur coupon", variant: "destructive" });
+    } finally {
+      setCouponLoading(false);
+    }
+  }
+
+  async function handleComplement() {
+    if (!complementClientId || !complementDureeId) {
+      toast({ title: "Sélectionner client et durée", variant: "destructive" });
+      return;
+    }
+    setComplementLoading(true);
+    try {
+      // Recharge supplémentaire sur le compte du client
+      const duree = complementDurees.find(d => d.id === Number(complementDureeId));
+      await gerantService.creerRecharge({
+        clientId: Number(complementClientId),
+        categorieId: Number(complementCategId),
+        dureeId: Number(complementDureeId),
+        montant: duree?.prix ?? 0,
+      });
+      toast({ title: "Temps complémentaire ajouté" });
+      setComplementDialog(false);
+      setComplementClientId(""); setComplementDureeId(""); setComplementCategId("");
+      loadData();
+    } catch (err: any) {
+      toast({ title: err.response?.data?.message ?? "Erreur", variant: "destructive" });
+    } finally {
+      setComplementLoading(false);
     }
   }
 
@@ -103,11 +180,17 @@ export default function GerantRecharges() {
   );
 
   return (
+    <>
     <AdminLayout>
       <div className="p-6 space-y-6">
-        <div>
-          <h1 className="text-xl font-bold text-foreground">Recharges</h1>
-          <p className="text-sm text-muted-foreground mt-0.5">Recharger le compte d'un client</p>
+        <div className="flex items-center justify-between">
+          <div>
+            <h1 className="text-xl font-bold text-foreground">Recharges</h1>
+            <p className="text-sm text-muted-foreground mt-0.5">Recharger le compte d'un client</p>
+          </div>
+          <Button variant="outline" onClick={() => setComplementDialog(true)} className="gap-1.5" data-testid="button-complement">
+            <Plus size={15} /> Compléter le temps
+          </Button>
         </div>
 
         {/* Formulaire de recharge */}
@@ -141,7 +224,7 @@ export default function GerantRecharges() {
                 {durees.sort((a, b) => a.secondes - b.secondes).map(d => (
                   <button
                     key={d.id}
-                    onClick={() => { setDureeId(String(d.id)); setMontant(String(d.prix)); }}
+                    onClick={() => setDureeId(String(d.id))}
                     className={`p-3 rounded-xl border text-sm transition-all ${dureeId === String(d.id) ? "bg-primary/10 border-primary/40 text-primary" : "bg-muted border-border text-foreground hover:border-primary/30"}`}
                     data-testid={`button-duree-${d.id}`}
                   >
@@ -153,13 +236,62 @@ export default function GerantRecharges() {
             </div>
           )}
 
-          <div className="space-y-1.5">
-            <Label className="flex items-center gap-1.5"><DollarSign size={12} /> Montant encaissé (FCFA)</Label>
-            <Input value={montant} onChange={e => setMontant(e.target.value)} type="number" placeholder="Montant payé par le client" data-testid="input-montant" />
-          </div>
-
           <Button className="w-full gap-2" onClick={handleRecharge} disabled={loading} data-testid="button-recharge">
             <Zap size={15} /> {loading ? "Recharge en cours..." : "Recharger"}
+          </Button>
+        </div>
+
+        {/* Postes dispo après recharge */}
+        {showPostes && (
+          <div className="bg-card border border-green-500/30 rounded-xl p-5 space-y-3">
+            <div className="flex items-center justify-between">
+              <div className="flex items-center gap-2">
+                <Monitor size={15} className="text-green-400" />
+                <h2 className="text-sm font-semibold text-foreground">Postes disponibles — choisir un poste</h2>
+              </div>
+              <button onClick={() => setShowPostes(false)} className="text-xs text-muted-foreground hover:text-foreground">Fermer</button>
+            </div>
+            {postesDispo.length === 0 ? (
+              <p className="text-xs text-muted-foreground">Aucun poste libre dans cette catégorie</p>
+            ) : (
+              <div className="grid grid-cols-3 gap-2">
+                {postesDispo.map(p => (
+                  <div key={p.id} className="p-3 rounded-xl border border-green-500/20 bg-green-500/5 text-center">
+                    <Monitor size={18} className="text-green-400 mx-auto mb-1" />
+                    <div className="text-sm font-bold text-foreground">{p.nom}</div>
+                    <div className="text-xs text-green-400 mt-0.5">Libre</div>
+                  </div>
+                ))}
+              </div>
+            )}
+          </div>
+        )}
+
+        {/* Lancer un coupon */}
+        <div className="bg-card border border-border rounded-xl p-5 space-y-4">
+          <div className="flex items-center gap-2">
+            <Ticket size={16} className="text-orange-400" />
+            <h2 className="text-sm font-semibold text-foreground">Appliquer un coupon client</h2>
+          </div>
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+            <div className="space-y-1.5">
+              <Label>Client</Label>
+              <Select value={couponClientId} onValueChange={setCouponClientId}>
+                <SelectTrigger><SelectValue placeholder="Sélectionner un client" /></SelectTrigger>
+                <SelectContent>
+                  {clients.filter(c => c.active).map(c => (
+                    <SelectItem key={c.id} value={String(c.id)}>{c.pseudo} — {c.telephone}</SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+            <div className="space-y-1.5">
+              <Label>Code coupon</Label>
+              <Input value={couponCode} onChange={e => setCouponCode(e.target.value.toUpperCase())} placeholder="XXXX-XXXX" className="font-mono" data-testid="input-coupon-code" />
+            </div>
+          </div>
+          <Button variant="outline" onClick={handleLancerCoupon} disabled={couponLoading} className="gap-1.5 border-orange-500/30 text-orange-400 hover:bg-orange-500/10" data-testid="button-apply-coupon">
+            <Ticket size={14} /> {couponLoading ? "Application..." : "Appliquer le coupon"}
           </Button>
         </div>
 
@@ -236,5 +368,56 @@ export default function GerantRecharges() {
         </div>
       </div>
     </AdminLayout>
+
+    {/* Dialog compléter le temps */}
+    <Dialog open={complementDialog} onOpenChange={v => { if (!v) { setComplementDialog(false); setComplementClientId(""); setComplementCategId(""); setComplementDureeId(""); } }}>
+      <DialogContent className="sm:max-w-sm">
+        <DialogHeader><DialogTitle className="flex items-center gap-2"><Plus size={16} className="text-primary" />Compléter le temps d'un client</DialogTitle></DialogHeader>
+        <div className="space-y-3">
+          <div className="space-y-1.5">
+            <Label>Client en cours de jeu</Label>
+            <Select value={complementClientId} onValueChange={setComplementClientId}>
+              <SelectTrigger><SelectValue placeholder="Sélectionner un client" /></SelectTrigger>
+              <SelectContent>
+                {activeSessions.map(s => (
+                  <SelectItem key={s.clientId} value={String(s.clientId)}>
+                    {s.client?.pseudo} — {s.poste?.nom}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          </div>
+          {complementClientId && (
+            <div className="space-y-1.5">
+              <Label>Catégorie</Label>
+              <Select value={complementCategId} onValueChange={setComplementCategId}>
+                <SelectTrigger><SelectValue placeholder="Catégorie" /></SelectTrigger>
+                <SelectContent>
+                  {categories.map(c => <SelectItem key={c.id} value={String(c.id)}>{c.nom}</SelectItem>)}
+                </SelectContent>
+              </Select>
+            </div>
+          )}
+          {complementDurees.length > 0 && (
+            <div className="grid grid-cols-3 gap-2">
+              {complementDurees.sort((a, b) => a.secondes - b.secondes).map(d => (
+                <button key={d.id} onClick={() => setComplementDureeId(String(d.id))}
+                  className={`p-3 rounded-xl border text-sm transition-all ${complementDureeId === String(d.id) ? "bg-primary/10 border-primary/40 text-primary" : "bg-muted border-border hover:border-primary/30"}`}>
+                  <div className="font-bold">{d.libelle}</div>
+                  <div className="text-xs mt-0.5 opacity-70">{d.prix.toLocaleString()} F</div>
+                </button>
+              ))}
+            </div>
+          )}
+        </div>
+        <DialogFooter>
+          <Button variant="ghost" onClick={() => setComplementDialog(false)}>Annuler</Button>
+          <Button onClick={handleComplement} disabled={complementLoading || !complementClientId || !complementDureeId}>
+            <Plus size={14} className="mr-1.5" /> {complementLoading ? "En cours..." : "Ajouter le temps"}
+          </Button>
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
+    </>
   );
 }

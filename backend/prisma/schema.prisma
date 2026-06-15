@@ -46,6 +46,7 @@ model Salle {
   ville        String
   quartier     String
   telephone    String
+  email        String?                    // Email du propriétaire pour les rapports
   disabled     Boolean  @default(false)
   switchType   String   @default("WIFI") // "USB" ou "WIFI"
   switchConfig String?                   // IP ou port COM

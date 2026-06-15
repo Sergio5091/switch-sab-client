@@ -3,7 +3,7 @@ import AdminLayout from "@/layouts/AdminLayout";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { Download, Gift } from "lucide-react";
+import { Download, Gift, Mail } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
 import { Badge } from "@/components/ui/badge";
 import { cn } from "@/lib/utils";
@@ -39,6 +39,7 @@ export default function AdminRapports() {
   const [filtrePoste, setFiltrePoste] = useState("all");
   const [dateDebut, setDateDebut] = useState("");
   const [dateFin, setDateFin] = useState("");
+  const [sendingEmail, setSendingEmail] = useState(false);
 
   // Charger gérants et postes une seule fois au montage
   useEffect(() => {
@@ -91,6 +92,21 @@ export default function AdminRapports() {
     toast({ title: "Export CSV téléchargé" });
   }
 
+  async function handleEnvoyerEmail() {
+    setSendingEmail(true);
+    try {
+      await api.post('/rapports/envoyer-email', {
+        dateDebut: dateDebut || undefined,
+        dateFin: dateFin || undefined,
+      });
+      toast({ title: "Rapport envoyé par email au propriétaire" });
+    } catch (err: any) {
+      toast({ title: err.response?.data?.message ?? "Erreur envoi email", variant: "destructive" });
+    } finally {
+      setSendingEmail(false);
+    }
+  }
+
   return (
     <AdminLayout>
       <div className="p-6 space-y-5">
@@ -101,6 +117,9 @@ export default function AdminRapports() {
           </div>
           <Button variant="outline" onClick={handleExport} className="gap-1.5" data-testid="button-export-csv">
             <Download size={15} /> Exporter CSV
+          </Button>
+          <Button variant="outline" onClick={handleEnvoyerEmail} disabled={sendingEmail} className="gap-1.5" data-testid="button-send-email">
+            <Mail size={15} /> {sendingEmail ? "Envoi…" : "Envoyer au propriétaire"}
           </Button>
         </div>
 

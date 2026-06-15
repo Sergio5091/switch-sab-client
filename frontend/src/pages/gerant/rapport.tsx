@@ -183,31 +183,48 @@ export default function GerantRapport() {
                   </span>
                 )}
               </div>
-              <div className="divide-y divide-border">
+              <div className="overflow-x-auto">
                 {rapport.sessions.length === 0 ? (
                   <div className="px-5 py-8 text-center text-muted-foreground text-sm">Aucune session aujourd'hui</div>
-                ) : rapport.sessions.map(s => (
-                  <div key={s.id} className={cn("flex items-center gap-3 px-5 py-3", s.estBonus && "bg-primary/5")}>
-                    <div className="flex-1 min-w-0">
-                      <div className="flex items-center gap-2">
-                        <span className="text-sm font-medium text-foreground">{s.client}</span>
-                        {s.estBonus && <Badge className="bg-primary/10 text-primary border-primary/20 text-xs gap-1"><Gift size={9} /> Bonus</Badge>}
-                      </div>
-                      <div className="text-xs text-muted-foreground mt-0.5 flex items-center gap-2">
-                        <Clock size={10} />
-                        {format(new Date(s.debut), "HH:mm")}
-                        {s.fin ? ` → ${format(new Date(s.fin), "HH:mm")}` : " → En cours"}
-                        · {s.duree} · {s.poste} · {s.categorie}
-                      </div>
-                    </div>
-                    <div className="text-right flex-shrink-0">
-                      <div className="text-sm font-bold text-primary">{s.montant.toLocaleString()} F</div>
-                      <Badge className={cn("text-xs", s.statut === "ACTIVE" ? "bg-green-500/10 text-green-400" : "bg-muted text-muted-foreground")}>
-                        {s.statut === "ACTIVE" ? "En cours" : s.statut === "ARRETEE" ? "Arrêtée" : "Terminée"}
-                      </Badge>
-                    </div>
-                  </div>
-                ))}
+                ) : (
+                  <table className="w-full text-sm">
+                    <thead>
+                      <tr className="border-b border-border bg-muted/30">
+                        <th className="text-left px-4 py-2.5 text-xs text-muted-foreground font-medium">Client</th>
+                        <th className="text-left px-4 py-2.5 text-xs text-muted-foreground font-medium">Début</th>
+                        <th className="text-left px-4 py-2.5 text-xs text-muted-foreground font-medium">Fin</th>
+                        <th className="text-left px-4 py-2.5 text-xs text-muted-foreground font-medium">Durée</th>
+                        <th className="text-left px-4 py-2.5 text-xs text-muted-foreground font-medium">Poste</th>
+                        <th className="text-left px-4 py-2.5 text-xs text-muted-foreground font-medium">Catégorie</th>
+                        <th className="text-right px-4 py-2.5 text-xs text-muted-foreground font-medium">Montant</th>
+                        <th className="text-left px-4 py-2.5 text-xs text-muted-foreground font-medium">Statut</th>
+                      </tr>
+                    </thead>
+                    <tbody className="divide-y divide-border">
+                      {rapport.sessions.map(s => (
+                        <tr key={s.id} className={cn("hover:bg-muted/20 transition-colors", s.estBonus && "bg-primary/5")}>
+                          <td className="px-4 py-3">
+                            <div className="flex items-center gap-1.5">
+                              <span className="font-medium text-foreground">{s.client}</span>
+                              {s.estBonus && <Badge className="bg-primary/10 text-primary border-primary/20 text-xs gap-1 py-0"><Gift size={9} />Bonus</Badge>}
+                            </div>
+                          </td>
+                          <td className="px-4 py-3 text-muted-foreground">{format(new Date(s.debut), "HH:mm")}</td>
+                          <td className="px-4 py-3 text-muted-foreground">{s.fin ? format(new Date(s.fin), "HH:mm") : <span className="text-green-400">En cours</span>}</td>
+                          <td className="px-4 py-3 text-foreground">{s.duree}</td>
+                          <td className="px-4 py-3 text-muted-foreground">{s.poste}</td>
+                          <td className="px-4 py-3 text-muted-foreground">{s.categorie}</td>
+                          <td className="px-4 py-3 text-right font-bold text-primary">{s.montant.toLocaleString()} F</td>
+                          <td className="px-4 py-3">
+                            <Badge className={cn("text-xs", s.statut === "ACTIVE" ? "bg-green-500/10 text-green-400" : "bg-muted text-muted-foreground")}>
+                              {s.statut === "ACTIVE" ? "En cours" : s.statut === "ARRETEE" ? "Arrêtée" : "Terminée"}
+                            </Badge>
+                          </td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                )}
               </div>
             </div>
 
@@ -222,30 +239,35 @@ export default function GerantRapport() {
                   </span>
                 )}
               </div>
-              <div className="divide-y divide-border">
+              <div className="overflow-x-auto">
                 {rapport.recharges.length === 0 ? (
                   <div className="px-5 py-8 text-center text-muted-foreground text-sm">Aucune recharge aujourd'hui</div>
-                ) : rapport.recharges.map(r => (
-                  <div key={r.id} className="flex items-center gap-3 px-5 py-3">
-                    <div className="w-8 h-8 rounded-lg bg-yellow-500/10 flex items-center justify-center flex-shrink-0">
-                      <DollarSign size={13} className="text-yellow-400" />
-                    </div>
-                    <div className="flex-1 min-w-0">
-                      <div className="text-sm font-medium text-foreground">{r.client}</div>
-                      <div className="text-xs text-muted-foreground mt-0.5 flex items-center gap-1.5">
-                        <Clock size={10} /> {format(new Date(r.date), "HH:mm")}
-                        {r.creditsActuels.filter(c => c.soldeMinutes > 0).length > 0 && (
-                          <span>
-                            · Solde : {r.creditsActuels.filter(c => c.soldeMinutes > 0).map(c => `${c.soldeMinutes}min ${c.categorie}`).join(", ")}
-                          </span>
-                        )}
-                      </div>
-                    </div>
-                    <div className="text-sm font-bold text-green-400 flex-shrink-0">
-                      +{r.montant.toLocaleString()} F
-                    </div>
-                  </div>
-                ))}
+                ) : (
+                  <table className="w-full text-sm">
+                    <thead>
+                      <tr className="border-b border-border bg-muted/30">
+                        <th className="text-left px-4 py-2.5 text-xs text-muted-foreground font-medium">Client</th>
+                        <th className="text-left px-4 py-2.5 text-xs text-muted-foreground font-medium">Début</th>
+                        <th className="text-left px-4 py-2.5 text-xs text-muted-foreground font-medium">Téléphone</th>
+                        <th className="text-right px-4 py-2.5 text-xs text-muted-foreground font-medium">Montant</th>
+                        <th className="text-left px-4 py-2.5 text-xs text-muted-foreground font-medium">Solde après</th>
+                      </tr>
+                    </thead>
+                    <tbody className="divide-y divide-border">
+                      {rapport.recharges.map(r => (
+                        <tr key={r.id} className="hover:bg-muted/20 transition-colors">
+                          <td className="px-4 py-3 font-medium text-foreground">{r.client}</td>
+                          <td className="px-4 py-3 text-muted-foreground">{format(new Date(r.date), "HH:mm")}</td>
+                          <td className="px-4 py-3 text-muted-foreground">{r.telephone}</td>
+                          <td className="px-4 py-3 text-right font-bold text-green-400">+{r.montant.toLocaleString()} F</td>
+                          <td className="px-4 py-3 text-xs text-muted-foreground">
+                            {r.creditsActuels.filter(c => c.soldeMinutes > 0).map(c => `${c.soldeMinutes}min ${c.categorie}`).join(", ") || "—"}
+                          </td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                )}
               </div>
             </div>
           </>

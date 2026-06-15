@@ -316,3 +316,49 @@ export const validerRecharge = async (req, res) => {
     })
   }
 }
+
+// ─── POST /gerant/recharges/coupon → Gérant applique un coupon pour un client ──
+
+export const appliquerCouponGerant = async (req, res) => {
+  const { code, clientId } = req.body
+
+  if (!code || !clientId) {
+    return res.status(400).json({ message: 'Code coupon et clientId requis' })
+  }
+
+  try {
+    // Vérifier que le client appartient à la salle
+    const client = await prisma.user.findFirst({
+      where: { id: Number(clientId), salleId: req.user.salle_id, role: 'CLIENT' }
+    })
+    if (!client) return res.status(404).json({ message: 'Client introuvable' })
+
+    // Vérifier le coupon
+    const coupon = await prisma.coupon.findFirst({
+      where: { code: code.trim().toUpperCase(), salleId: req.user.salle_id, utilise: false }
+    })
+    if (!coupon) return res.status(404).json({ message: 'Coupon invalide ou déjà utilisé' })
+
+    await prisma.$transaction(async (tx) => {
+      await tx.coupon.update({ where: { id: coupon.id }, data: { utilise: true } })
+      await tx.transaction.create({
+        data: {
+          clientId: Number(clientId),
+          montant: coupon.valeur,
+          type: 'RECHARGE_COUPON',
+          gerantId: req.user.id
+        }
+      })
+    })
+
+    logger.info(`Coupon ${coupon.code} appliqué par gérant ${req.user.pseudo} → client ${client.pseudo}`)
+
+    return res.json({
+      message: `Coupon appliqué au compte de ${client.pseudo}`,
+      valeur: coupon.valeur
+    })
+  } catch (err) {
+    console.error('[gerant/recharges/coupon POST]', err)
+    return res.status(500).json({ message: 'Erreur serveur' })
+  }
+}

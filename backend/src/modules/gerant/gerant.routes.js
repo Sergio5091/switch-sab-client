@@ -2,7 +2,7 @@ import { Router } from 'express'
 import { verifyJwt, requireRole } from '../../middlewares/auth.middleware.js'
 
 import { creerClient, listerClients, detailClient, modifierClient } from './clients.controller.js'
-import { creerRecharge, listerRechargesEnAttente, listerHistoriqueRecharges, validerRecharge } from './recharges.controller.js'
+import { creerRecharge, listerRechargesEnAttente, listerHistoriqueRecharges, validerRecharge, appliquerCouponGerant } from './recharges.controller.js'
 import { demarrerSession, arreterSession, listerSessions, detailSession } from './sessions.controller.js'
 import { rapportJour, rapportPeriode } from './rapport.controller.js'
 import { listerCategories } from '../admin/categories.controller.js'
@@ -25,6 +25,7 @@ router.post('/recharges',              creerRecharge)
 router.get('/recharges',               listerHistoriqueRecharges)
 router.get('/recharges/en-attente',    listerRechargesEnAttente)
 router.post('/recharges/:id/valider',  validerRecharge)
+router.post('/recharges/coupon',       appliquerCouponGerant)
 
 // ─── SESSIONS ─────────────────────────────────────────────────────────────
 router.post('/sessions',              demarrerSession)
