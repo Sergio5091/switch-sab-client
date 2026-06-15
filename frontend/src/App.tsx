@@ -89,7 +89,11 @@ function FraudeAlert() {
 }
 
 function RoleRedirect() {
-  const { currentUser, licenceStatut, salleConfiguree } = useApp();
+  const { currentUser, licenceStatut, salleConfiguree, isLoading } = useApp();
+
+  // Attendre que la vérification initiale soit terminée
+  if (isLoading) return null;
+
   if (!currentUser) return <Redirect to="/login" />;
 
   // Première installation : salle pas encore configurée
@@ -97,7 +101,7 @@ function RoleRedirect() {
     return <Redirect to="/setup/salle" />;
   }
 
-  // Licence invalide ou expirée (on attend que licenceStatut soit chargé)
+  // Licence invalide ou expirée
   if (licenceStatut !== null && licenceStatut.statut !== "ACTIVE") {
     return <Redirect to="/admin/licence" />;
   }
@@ -121,28 +125,36 @@ function ProtectedRoute({
   component: React.ComponentType;
   roles: string[];
 }) {
-  const { currentUser, licenceStatut } = useApp();
+  const { currentUser, licenceStatut, isLoading } = useApp();
+
+  // Attendre l'initialisation avant toute redirection
+  if (isLoading) return null;
 
   if (!currentUser) return <Redirect to="/login" />;
   if (!roles.includes(currentUser.role)) return <RoleRedirect />;
 
-  // Pour les routes admin, vérifier la licence (attendre que licenceStatut soit chargé)
-  if (roles.includes("admin") && licenceStatut !== null && licenceStatut.statut !== "ACTIVE") {
+  // Pour les routes admin/gérant, vérifier la licence
+  if (licenceStatut !== null && licenceStatut.statut !== "ACTIVE") {
     return <Redirect to="/admin/licence" />;
   }
+
+  // Licence encore en chargement → attendre
+  if (licenceStatut === null) return null;
 
   return <Component />;
 }
 
 function LicenseRequiredRoute({ component: Component }: { component: React.ComponentType }) {
-  const { currentUser } = useApp();
+  const { currentUser, isLoading } = useApp();
+  if (isLoading) return null;
   if (!currentUser) return <Redirect to="/login" />;
   return <Component />;
 }
 
 function LoginGuard() {
-  const { currentUser } = useApp();
+  const { currentUser, isLoading } = useApp();
   const [location] = useLocation();
+  if (isLoading) return null;
   if (currentUser && location === "/login") return <RoleRedirect />;
   return <LoginPage />;
 }

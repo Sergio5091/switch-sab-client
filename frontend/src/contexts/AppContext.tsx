@@ -1,4 +1,4 @@
-import { createContext, useContext, useState, useEffect, useCallback } from "react";
+import { createContext, useContext, useState, useEffect, useCallback, useRef } from "react";
 import { axiosInstance } from "@/lib/axios";
 
 export type Role = "superadmin" | "admin" | "gerant" | "client";
@@ -26,6 +26,7 @@ export interface Utilisateur {
 
 interface AppContextType {
   currentUser: Utilisateur | null;
+  isLoading: boolean;
   login: (email: string, password: string) => Promise<{ success: boolean; licenceRequired: boolean; salleRequired: boolean }>;
   logout: () => void;
   licenceStatut: LicenceStatut | null;
@@ -54,10 +55,17 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
   const [fraudeDetectee, setFraudeDetectee] = useState(false);
   const [messageFraude, setMessageFraude] = useState("");
   const [salleConfiguree, setSalleConfiguree] = useState<boolean | null>(null);
+  // isLoading = true tant que la vérification initiale de licence n'est pas terminée
+  const [isLoading, setIsLoading] = useState(() => {
+    // Si aucun user en localStorage, pas besoin d'attendre
+    try {
+      return !!localStorage.getItem("switch_sab_user");
+    } catch { return false; }
+  });
 
   useEffect(() => {
     if (currentUser) {
-      checkLicenceStatut();
+      checkLicenceStatut().finally(() => setIsLoading(false));
     }
   }, []);
 
@@ -190,7 +198,7 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
 
   return (
     <AppContext.Provider value={{
-      currentUser, login, logout,
+      currentUser, isLoading, login, logout,
       licenceStatut, checkLicenceStatut, activerLicence,
       fraudeDetectee, messageFraude, resetFraude,
       salleConfiguree, checkSetupStatut,
