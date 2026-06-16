@@ -85,6 +85,7 @@ export default function GerantCoupons() {
   const [count, setCount] = useState("5");
   const [loading, setLoading] = useState(false);
   const [selectedCoupon, setSelectedCoupon] = useState<Coupon | null>(null);
+  const [printCount, setPrintCount] = useState("40");
 
   useEffect(() => {
     api.get('/gerant/coupons')
@@ -198,18 +199,19 @@ export default function GerantCoupons() {
           {coupons.length > 0 && (
             <div className="flex items-center gap-2 pt-2 border-t border-border flex-wrap">
               <span className="text-xs text-muted-foreground">Imprimer :</span>
-              <Button variant="outline" size="sm" onClick={() => handlePrintBatch(10)} className="gap-1.5 text-xs">
-                <Printer size={13} /> 10 codes
+              <Input
+                type="number"
+                min={1}
+                max={actifs.length}
+                value={printCount}
+                onChange={e => setPrintCount(e.target.value)}
+                className="w-20 h-8 text-xs"
+                placeholder="Qté"
+              />
+              <Button variant="outline" size="sm" onClick={() => handlePrintBatch(Number(printCount) || actifs.length)} className="gap-1.5 text-xs">
+                <Printer size={13} /> Imprimer
               </Button>
-              <Button variant="outline" size="sm" onClick={() => handlePrintBatch(20)} className="gap-1.5 text-xs">
-                <Printer size={13} /> 20 codes
-              </Button>
-              <Button variant="outline" size="sm" onClick={() => handlePrintBatch(40)} className="gap-1.5 text-xs">
-                <Printer size={13} /> 40 codes
-              </Button>
-              <Button variant="outline" size="sm" onClick={() => handlePrintBatch(actifs.length)} className="gap-1.5 text-xs">
-                <Printer size={13} /> Tout ({actifs.length})
-              </Button>
+              <span className="text-xs text-muted-foreground">({actifs.length} actifs disponibles)</span>
             </div>
           )}
         </div>

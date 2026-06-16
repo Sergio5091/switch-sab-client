@@ -77,6 +77,7 @@ export default function AdminCoupons() {
   const [count, setCount] = useState("10");
   const [selectedCoupon, setSelectedCoupon] = useState<Coupon | null>(null);
   const printAllRef = useRef<HTMLDivElement>(null);
+  const [printCount, setPrintCount] = useState("40");
 
   useEffect(() => {
     adminService.getCoupons().then(setCoupons).catch(() => toast({ title: "Erreur chargement coupons", variant: "destructive" }));
@@ -180,21 +181,20 @@ export default function AdminCoupons() {
           </div>
           {coupons.length > 0 && (
             <div className="flex items-center gap-2 pt-2 border-t border-border flex-wrap">
-              <span className="text-xs text-muted-foreground">
-                {actifs.length > 0 ? `${actifs.length} actifs` : 'Tous utilisés'} — Imprimer :
-              </span>
-              <Button variant="outline" size="sm" onClick={() => handlePrintBatch(10)} className="gap-1.5 text-xs">
-                <Printer size={13} /> 10 codes
+              <span className="text-xs text-muted-foreground">Imprimer :</span>
+              <Input
+                type="number"
+                min={1}
+                max={actifs.length}
+                value={printCount}
+                onChange={e => setPrintCount(e.target.value)}
+                className="w-20 h-8 text-xs"
+                placeholder="Qté"
+              />
+              <Button variant="outline" size="sm" onClick={() => handlePrintBatch(Number(printCount) || actifs.length)} className="gap-1.5 text-xs">
+                <Printer size={13} /> Imprimer
               </Button>
-              <Button variant="outline" size="sm" onClick={() => handlePrintBatch(20)} className="gap-1.5 text-xs">
-                <Printer size={13} /> 20 codes
-              </Button>
-              <Button variant="outline" size="sm" onClick={() => handlePrintBatch(40)} className="gap-1.5 text-xs" data-testid="button-print-40">
-                <Printer size={13} /> 40 codes
-              </Button>
-              <Button variant="outline" size="sm" onClick={() => handlePrintBatch(coupons.length)} className="gap-1.5 text-xs">
-                <Printer size={13} /> Tout ({coupons.length})
-              </Button>
+              <span className="text-xs text-muted-foreground">({actifs.length} actifs disponibles)</span>
             </div>
           )}
         </div>
