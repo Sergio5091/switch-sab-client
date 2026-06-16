@@ -41,6 +41,7 @@ export default function GerantRecharges() {
   const [lastRechargeCategId, setLastRechargeCategId] = useState<number | null>(null);
   const [couponCode, setCouponCode] = useState("");
   const [couponClientId, setCouponClientId] = useState("");
+  const [couponCategorieId, setCouponCategorieId] = useState("all");
   const [couponLoading, setCouponLoading] = useState(false);
 
   // Complément de temps sur session active
@@ -124,9 +125,18 @@ export default function GerantRecharges() {
     }
     setCouponLoading(true);
     try {
-      await api.post('/gerant/recharges/coupon', { code: couponCode, clientId: Number(couponClientId) });
-      toast({ title: "Coupon appliqué avec succès" });
-      setCouponCode(""); setCouponClientId("");
+      const payload: any = { code: couponCode, clientId: Number(couponClientId) };
+      if (couponCategorieId && couponCategorieId !== "all") {
+        payload.categorieId = Number(couponCategorieId);
+      }
+      const res = await api.post('/gerant/recharges/coupon', payload);
+      const credits = res.data.credits as { minutesAjoutees: number; categorieId: number }[];
+      const detail = credits?.map(c => {
+        const cat = categories.find(cat => cat.id === c.categorieId);
+        return `+${c.minutesAjoutees}min ${cat?.nom ?? ''}`;
+      }).join(' | ') ?? '';
+      toast({ title: "Coupon appliqué ✅", description: detail });
+      setCouponCode(""); setCouponClientId(""); setCouponCategorieId("all");
       loadData();
     } catch (err: any) {
       toast({ title: err.response?.data?.message ?? "Erreur coupon", variant: "destructive" });
@@ -302,6 +312,19 @@ export default function GerantRecharges() {
               <Label>Code coupon</Label>
               <Input value={couponCode} onChange={e => setCouponCode(e.target.value.toUpperCase())} placeholder="XXXX-XXXX" className="font-mono" data-testid="input-coupon-code" />
             </div>
+          </div>
+          <div className="space-y-1.5">
+            <Label>Catégorie à créditer</Label>
+            <Select value={couponCategorieId} onValueChange={setCouponCategorieId}>
+              <SelectTrigger><SelectValue placeholder="Toutes les catégories (proportionnel)" /></SelectTrigger>
+              <SelectContent>
+                <SelectItem value="all">Toutes les catégories</SelectItem>
+                {categories.map(c => (
+                  <SelectItem key={c.id} value={String(c.id)}>{c.nom}</SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+            <p className="text-xs text-muted-foreground">Si non spécifié, le crédit est réparti sur toutes les catégories selon leurs tarifs</p>
           </div>
           <Button variant="outline" onClick={handleLancerCoupon} disabled={couponLoading} className="gap-1.5 border-orange-500/30 text-orange-400 hover:bg-orange-500/10" data-testid="button-apply-coupon">
             <Ticket size={14} /> {couponLoading ? "Application..." : "Appliquer le coupon"}

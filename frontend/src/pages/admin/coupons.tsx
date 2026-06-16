@@ -10,6 +10,7 @@ import { useToast } from "@/hooks/use-toast";
 import { Badge } from "@/components/ui/badge";
 import { cn } from "@/lib/utils";
 import { QRCodeSVG } from "qrcode.react";
+import QRCode from "qrcode";
 import adminService, { Coupon } from "@/services/adminService";
 
 const VALEURS = [500, 1000, 2000, 5000];
@@ -94,50 +95,53 @@ export default function AdminCoupons() {
     }
   }
 
-  function handlePrintBatch(count: number) {
-    const actifs = coupons.filter(c => !c.utilise).slice(0, count);
-    if (actifs.length === 0) {
-      toast({ title: "Aucun coupon actif à imprimer", variant: "destructive" });
+  async function handlePrintBatch(count: number) {
+    const aPrinter = coupons.filter(c => !c.utilise).slice(0, count);
+    const liste = aPrinter.length > 0 ? aPrinter : coupons.slice(0, count);
+    if (liste.length === 0) {
+      toast({ title: "Aucun coupon à imprimer", variant: "destructive" });
       return;
     }
-    const rows = actifs.map(c => `
-      <div class="coupon">
-        <div class="valeur">${c.valeur.toLocaleString()} FCFA</div>
-        <div class="code">${c.code}</div>
-        <div class="label">Switch SAB</div>
-      </div>
-    `).join("");
+
+    const QRCode = (await import('qrcode')).default;
+    const rows = await Promise.all(
+      liste.map(async c => {
+        const svgString = await QRCode.toString(c.code, {
+          type: 'svg',
+          width: 100,
+          margin: 1,
+          color: { dark: '#000000', light: '#ffffff' }
+        });
+        return `
+          <div class="coupon">
+            <div class="valeur">${c.valeur.toLocaleString()} FCFA</div>
+            <div class="qr">${svgString}</div>
+            <div class="code">${c.code}</div>
+            <div class="label">Switch SAB</div>
+          </div>`;
+      })
+    );
+
     const win = window.open("", "_blank");
     if (!win) return;
     win.document.write(`
       <html><head><title>Coupons Switch SAB</title>
       <style>
-        @page { size: A4; margin: 10mm; }
+        @page { size: A4; margin: 8mm; }
         * { box-sizing: border-box; }
         body { margin: 0; font-family: monospace; }
-        .grid {
-          display: grid;
-          grid-template-columns: repeat(4, 1fr);
-          gap: 4mm;
-          width: 100%;
-        }
-        .coupon {
-          border: 1.5px dashed #f97316;
-          border-radius: 6px;
-          padding: 8px 6px;
-          text-align: center;
-          page-break-inside: avoid;
-        }
-        .valeur { font-size: 13px; font-weight: bold; color: #f97316; margin-bottom: 4px; }
-        .code { font-size: 11px; font-weight: bold; letter-spacing: 2px; }
-        .label { font-size: 9px; color: #888; margin-top: 3px; }
+        .grid { display: grid; grid-template-columns: repeat(4, 1fr); gap: 3mm; width: 100%; }
+        .coupon { border: 1.5px dashed #f97316; border-radius: 6px; padding: 6px 4px; text-align: center; page-break-inside: avoid; display: flex; flex-direction: column; align-items: center; gap: 3px; }
+        .valeur { font-size: 12px; font-weight: bold; color: #f97316; }
+        .qr svg { width: 90px; height: 90px; display: block; }
+        .code { font-size: 10px; font-weight: bold; letter-spacing: 1.5px; }
+        .label { font-size: 8px; color: #888; }
       </style></head>
-      <body><div class="grid">${rows}</div></body></html>
-    `);
+      <body><div class="grid">${rows.join("")}</div>
+      <script>window.onload = function() { window.print(); window.close(); }<\/script>
+      </body></html>`);
     win.document.close();
-    win.print();
-    win.close();
-    toast({ title: `${actifs.length} coupons envoyés à l'imprimante` });
+    toast({ title: `${liste.length} coupons avec QR envoyés à l'imprimante` });
   }
 
   const actifs = coupons.filter(c => !c.utilise);
@@ -174,9 +178,11 @@ export default function AdminCoupons() {
               <Ticket size={15} /> Générer
             </Button>
           </div>
-          {actifs.length > 0 && (
+          {coupons.length > 0 && (
             <div className="flex items-center gap-2 pt-2 border-t border-border flex-wrap">
-              <span className="text-xs text-muted-foreground">{actifs.length} coupons actifs disponibles à l'impression :</span>
+              <span className="text-xs text-muted-foreground">
+                {actifs.length > 0 ? `${actifs.length} actifs` : 'Tous utilisés'} — Imprimer :
+              </span>
               <Button variant="outline" size="sm" onClick={() => handlePrintBatch(10)} className="gap-1.5 text-xs">
                 <Printer size={13} /> 10 codes
               </Button>
@@ -186,8 +192,8 @@ export default function AdminCoupons() {
               <Button variant="outline" size="sm" onClick={() => handlePrintBatch(40)} className="gap-1.5 text-xs" data-testid="button-print-40">
                 <Printer size={13} /> 40 codes
               </Button>
-              <Button variant="outline" size="sm" onClick={() => handlePrintBatch(actifs.length)} className="gap-1.5 text-xs">
-                <Printer size={13} /> Tout ({actifs.length})
+              <Button variant="outline" size="sm" onClick={() => handlePrintBatch(coupons.length)} className="gap-1.5 text-xs">
+                <Printer size={13} /> Tout ({coupons.length})
               </Button>
             </div>
           )}

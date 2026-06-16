@@ -9,7 +9,7 @@ export const getHome = async (req, res) => {
     const user = await prisma.user.findUnique({
       where: { id: clientId },
       select: {
-        id: true, pseudo: true,
+        id: true, pseudo: true, salleId: true,
         credits: { select: { solde: true, categorie: { select: { id: true, nom: true } } } },
         bonus: { select: { solde: true, disponible: true } },
         transactions: { select: { montant: true, type: true }, where: { type: { in: ['RECHARGE_GERANT', 'RECHARGE_COUPON'] } } },
@@ -22,11 +22,27 @@ export const getHome = async (req, res) => {
     })
     if (!user) return res.status(404).json({ message: 'Client introuvable' })
 
+    // Récupérer TOUTES les catégories de la salle
+    // pour que le client voie les catégories même sans crédit existant
+    const toutesCategories = await prisma.categorie.findMany({
+      where: { salleId: user.salleId },
+      select: { id: true, nom: true }
+    })
+
+    // Fusionner : catégories avec solde existant ou 0 par défaut
+    const credits = toutesCategories.map(cat => {
+      const creditExistant = user.credits.find(c => c.categorie.id === cat.id)
+      return {
+        solde: creditExistant?.solde ?? 0,
+        categorie: cat
+      }
+    })
+
     const soldeMonetaire = user.transactions.reduce((sum, t) => sum + t.montant, 0)
 
     return res.json({
       pseudo: user.pseudo,
-      credits: user.credits,
+      credits,
       bonus: user.bonus,
       soldeMonetaire,
       activeSession: user.sessions.find(s => s.statut === 'ACTIVE') ?? null,
@@ -88,18 +104,77 @@ export const startSession = async (req, res) => {
     const duree = await prisma.duree.findFirst({ where: { id: Number(dureeId), categorieId: Number(categorieId) } })
     if (!duree) return res.status(404).json({ message: 'Durée introuvable' })
 
-    const credit = await prisma.credit.findFirst({ where: { clientId, categorieId: Number(categorieId) } })
-    if (!credit || credit.solde < duree.secondes) return res.status(400).json({ message: 'Crédit insuffisant' })
-
     const posteLibre = await prisma.poste.findFirst({ where: { categorieId: Number(categorieId), statut: 'LIBRE' } })
     if (!posteLibre) return res.status(400).json({ message: 'Aucun poste libre dans cette catégorie' })
+
+    // Vérifier crédit en secondes
+    const credit = await prisma.credit.findFirst({ where: { clientId, categorieId: Number(categorieId) } })
+    const soldeSecondes = credit?.solde ?? 0
+
+    let modeAchat = false // true = on débite le solde monétaire au lieu des secondes
+
+    if (soldeSecondes < duree.secondes) {
+      // Pas assez de secondes → vérifier si le client a assez en solde monétaire
+      const user = await prisma.user.findUnique({
+        where: { id: clientId },
+        select: {
+          transactions: {
+            where: { type: { in: ['RECHARGE_GERANT', 'RECHARGE_COUPON'] } },
+            select: { montant: true }
+          }
+        }
+      })
+      const totalEncaisse = (user?.transactions ?? []).reduce((s, t) => s + t.montant, 0)
+
+      // Calculer montant déjà dépensé en sessions
+      const depenses = await prisma.transaction.aggregate({
+        where: { clientId, type: 'SESSION' },
+        _sum: { montant: true }
+      })
+      const soldeMonetaire = totalEncaisse - (depenses._sum.montant ?? 0)
+
+      if (soldeMonetaire >= duree.prix) {
+        modeAchat = true
+      } else {
+        return res.status(400).json({
+          message: `Crédit insuffisant. Disponible : ${Math.floor(soldeSecondes / 60)} min ou ${soldeMonetaire.toLocaleString()} F (requis : ${duree.prix.toLocaleString()} F)`
+        })
+      }
+    }
 
     const finPrevue = new Date(Date.now() + duree.secondes * 1000)
 
     const session = await prisma.$transaction(async (tx) => {
-      await tx.credit.update({ where: { id: credit.id }, data: { solde: credit.solde - duree.secondes } })
+      if (modeAchat) {
+        // Débiter monétairement : créer une transaction SESSION
+        await tx.transaction.create({
+          data: { clientId, montant: duree.prix, type: 'SESSION' }
+        })
+        // Créditer puis débiter les secondes (net = 0, juste pour la cohérence)
+        await tx.credit.upsert({
+          where: { clientId_categorieId: { clientId, categorieId: Number(categorieId) } },
+          create: { clientId, categorieId: Number(categorieId), solde: 0 },
+          update: {} // solde reste 0, on passe directement en session
+        })
+      } else {
+        // Débiter les secondes
+        await tx.credit.update({
+          where: { id: credit.id },
+          data: { solde: { decrement: duree.secondes } }
+        })
+      }
+
       const s = await tx.session.create({
-        data: { clientId, gerantId: clientId, posteId: posteLibre.id, dureeId: Number(dureeId), tempsRestant: duree.secondes, fin: finPrevue, statut: 'ACTIVE', estBonus: false },
+        data: {
+          clientId,
+          gerantId: clientId,
+          posteId: posteLibre.id,
+          dureeId: Number(dureeId),
+          tempsRestant: duree.secondes,
+          fin: finPrevue,
+          statut: 'ACTIVE',
+          estBonus: false
+        },
       })
       await tx.poste.update({ where: { id: posteLibre.id }, data: { statut: 'OCCUPE' } })
       return s
@@ -111,7 +186,7 @@ export const startSession = async (req, res) => {
     const { scheduleSessionEnd } = await import('../gerant/sessions.controller.js')
     scheduleSessionEnd(session.id, posteLibre.id, duree.secondes * 1000)
 
-    return res.status(201).json({ message: 'Session démarrée', sessionId: session.id, finPrevue })
+    return res.status(201).json({ message: 'Session démarrée', sessionId: session.id, finPrevue, modeAchat })
   } catch (err) {
     console.error('[client/session/start POST]', err)
     return res.status(500).json({ message: 'Erreur serveur' })

@@ -124,13 +124,26 @@ export const demarrerSession = async (req, res) => {
       creditSource = credit
     }
 
-    // 5. Trouver un poste libre dans la catégorie
-    const posteLibre = await prisma.poste.findFirst({
-      where: {
-        categorieId: Number(categorieId),
-        statut: 'LIBRE'
+    // 5. Trouver le poste — priorité au choix du gérant, sinon premier libre
+    const { posteId } = req.body
+    let posteLibre
+
+    if (posteId) {
+      posteLibre = await prisma.poste.findFirst({
+        where: {
+          id: Number(posteId),
+          categorieId: Number(categorieId),
+          statut: 'LIBRE'
+        }
+      })
+      if (!posteLibre) {
+        return res.status(400).json({ message: 'Le poste choisi est indisponible ou occupé' })
       }
-    })
+    } else {
+      posteLibre = await prisma.poste.findFirst({
+        where: { categorieId: Number(categorieId), statut: 'LIBRE' }
+      })
+    }
 
     if (!posteLibre) {
       return res.status(400).json({
@@ -422,75 +435,65 @@ async function endSessionAuto(sessionId, posteId) {
   try {
     const io = getIO()
 
-    // TRANSACTION : marquer TERMINEE + libérer poste
     await prisma.$transaction(async (tx) => {
+      // Inclure duree et client (pas bonus — relation inexistante sur Session)
       const session = await tx.session.findUnique({
         where: { id: sessionId },
-        include: { client: true, bonus: true }
-      })
-
-      if (!session) return
-
-      // Mettre à jour session
-      await tx.session.update({
-        where: { id: sessionId },
-        data: {
-          statut: 'TERMINEE',
-          tempsRestant: 0,
-          fin: new Date()
+        include: {
+          client: { select: { id: true, pseudo: true, salleId: true } },
+          duree: { select: { secondes: true } }
         }
       })
 
-      // Libérer poste
+      if (!session || session.statut !== 'ACTIVE') return
+
+      await tx.session.update({
+        where: { id: sessionId },
+        data: { statut: 'TERMINEE', tempsRestant: 0, fin: new Date() }
+      })
+
       await tx.poste.update({
         where: { id: posteId },
         data: { statut: 'LIBRE' }
       })
 
-      // Calculer et créditer bonus (si applicable)
-      const configBonus = await tx.configBonus.findUnique({
-        where: { salleId: session.client.salleId }
-      })
+      // Bonus — uniquement si session normale (pas bonus)
+      if (!session.estBonus && session.duree?.secondes) {
+        const configBonus = await tx.configBonus.findUnique({
+          where: { salleId: session.client.salleId }
+        })
 
-      if (configBonus && !session.estBonus) {
-        // Calculer bonus : ratioSecondes par heure jouée
-        const heuresJouees = (session.duree.secondes - 0) / 3600
-        const bonusGagne = Math.floor(configBonus.ratioSecondes * heuresJouees)
+        if (configBonus) {
+          const heuresJouees = session.duree.secondes / 3600
+          const bonusGagne = Math.floor(configBonus.ratioSecondes * heuresJouees)
 
-        if (bonusGagne > 0) {
-          const bonus = await tx.bonus.findUnique({
-            where: { clientId: session.clientId }
-          })
-
-          if (bonus) {
-            const nouveauSolde = bonus.solde + bonusGagne
-            const disponible =
-              bonus.disponible || nouveauSolde >= configBonus.seuilDeblocage
-
-            await tx.bonus.update({
-              where: { id: bonus.id },
-              data: {
-                solde: nouveauSolde,
-                disponible,
-                derniereActivite: new Date()
-              }
+          if (bonusGagne > 0) {
+            const bonus = await tx.bonus.findUnique({
+              where: { clientId: session.clientId }
             })
+
+            if (bonus) {
+              const nouveauSolde = bonus.solde + bonusGagne
+              await tx.bonus.update({
+                where: { id: bonus.id },
+                data: {
+                  solde: nouveauSolde,
+                  disponible: bonus.disponible || nouveauSolde >= configBonus.seuilDeblocage,
+                  derniereActivite: new Date()
+                }
+              })
+            }
           }
         }
       }
     })
 
-    // Éteindre poste
-    try {
-      await switchService.eteindrePoste(posteId)
-    } catch (err) {
-      logger.warn(`Impossible d'éteindre poste ${posteId}:`, err.message)
+    try { await switchService.eteindrePoste(posteId) } catch (e) {
+      logger.warn(`Impossible d'éteindre poste ${posteId}:`, e.message)
     }
 
-    // Émettre Socket.io
     io.emit('session:end', { sessionId, posteId })
-
-    logger.info(`Session terminée automatiquement : ${sessionId}`)
+    logger.info(`Session ${sessionId} terminée automatiquement`)
   } catch (err) {
     logger.error(`Erreur fin auto session ${sessionId}:`, err.message)
   }

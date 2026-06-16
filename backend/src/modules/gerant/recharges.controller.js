@@ -57,30 +57,24 @@ export const creerRecharge = async (req, res) => {
       })
     }
 
-    // Trouver ou créer le crédit pour cette catégorie
-    let credit = await prisma.credit.findFirst({
-      where: {
-        clientId: Number(clientId),
-        categorieId: Number(categorieId)
-      }
-    })
-
-    if (!credit) {
-      credit = await prisma.credit.create({
-        data: {
+    // TRANSACTION : créer ou mettre à jour le crédit + enregistrer transaction
+    const recharge = await prisma.$transaction(async (tx) => {
+      // Upsert : crée la ligne si elle n'existe pas, sinon incrémente
+      await tx.credit.upsert({
+        where: {
+          clientId_categorieId: {
+            clientId: Number(clientId),
+            categorieId: Number(categorieId)
+          }
+        },
+        create: {
           clientId: Number(clientId),
           categorieId: Number(categorieId),
-          solde: 0
+          solde: duree.secondes
+        },
+        update: {
+          solde: { increment: duree.secondes }
         }
-      })
-    }
-
-    // TRANSACTION : créditer + enregistrer transaction
-    const recharge = await prisma.$transaction(async (tx) => {
-      // Créditer
-      await tx.credit.update({
-        where: { id: credit.id },
-        data: { solde: credit.solde + duree.secondes }
       })
 
       // Enregistrer transaction
@@ -320,7 +314,7 @@ export const validerRecharge = async (req, res) => {
 // ─── POST /gerant/recharges/coupon → Gérant applique un coupon pour un client ──
 
 export const appliquerCouponGerant = async (req, res) => {
-  const { code, clientId } = req.body
+  const { code, clientId, categorieId } = req.body
 
   if (!code || !clientId) {
     return res.status(400).json({ message: 'Code coupon et clientId requis' })
@@ -339,8 +333,62 @@ export const appliquerCouponGerant = async (req, res) => {
     })
     if (!coupon) return res.status(404).json({ message: 'Coupon invalide ou déjà utilisé' })
 
+    // Déterminer la catégorie à créditer
+    // Si categorieId fourni → créditer cette catégorie
+    // Sinon → créditer toutes les catégories de la salle proportionnellement
+    const categories = categorieId
+      ? await prisma.categorie.findMany({ where: { id: Number(categorieId), salleId: req.user.salle_id } })
+      : await prisma.categorie.findMany({ where: { salleId: req.user.salle_id } })
+
+    if (categories.length === 0) {
+      return res.status(400).json({ message: 'Aucune catégorie trouvée pour cette salle' })
+    }
+
+    // Pour chaque catégorie, calculer les secondes en fonction du tarif le moins cher
+    const creditsAMettreAJour = []
+    for (const cat of categories) {
+      const durees = await prisma.duree.findMany({
+        where: { categorieId: cat.id },
+        orderBy: { prix: 'asc' },
+        take: 1
+      })
+      if (durees.length === 0) continue
+
+      const secondes = Math.floor((coupon.valeur / durees[0].prix) * durees[0].secondes)
+      if (secondes <= 0) continue
+
+      creditsAMettreAJour.push({ categorieId: cat.id, secondes })
+    }
+
+    if (creditsAMettreAJour.length === 0) {
+      return res.status(400).json({ message: 'Impossible de calculer les crédits — vérifiez les tarifs des catégories' })
+    }
+
     await prisma.$transaction(async (tx) => {
+      // Marquer coupon utilisé
       await tx.coupon.update({ where: { id: coupon.id }, data: { utilise: true } })
+
+      // Créditer les secondes avec upsert (atomique)
+      for (const { categorieId: catId, secondes } of creditsAMettreAJour) {
+        await tx.credit.upsert({
+          where: {
+            clientId_categorieId: {
+              clientId: Number(clientId),
+              categorieId: catId
+            }
+          },
+          create: {
+            clientId: Number(clientId),
+            categorieId: catId,
+            solde: secondes
+          },
+          update: {
+            solde: { increment: secondes }
+          }
+        })
+      }
+
+      // Enregistrer la transaction
       await tx.transaction.create({
         data: {
           clientId: Number(clientId),
@@ -351,11 +399,18 @@ export const appliquerCouponGerant = async (req, res) => {
       })
     })
 
-    logger.info(`Coupon ${coupon.code} appliqué par gérant ${req.user.pseudo} → client ${client.pseudo}`)
+    const details = creditsAMettreAJour.map(({ categorieId: catId, secondes }) => ({
+      categorieId: catId,
+      secondesAjoutees: secondes,
+      minutesAjoutees: Math.floor(secondes / 60)
+    }))
+
+    logger.info(`Coupon ${coupon.code} (${coupon.valeur}F) → client ${client.pseudo} : +${creditsAMettreAJour.map(c => Math.floor(c.secondes/60) + 'min').join(', ')}`)
 
     return res.json({
-      message: `Coupon appliqué au compte de ${client.pseudo}`,
-      valeur: coupon.valeur
+      message: `Coupon appliqué — ${client.pseudo} crédité`,
+      valeur: coupon.valeur,
+      credits: details
     })
   } catch (err) {
     console.error('[gerant/recharges/coupon POST]', err)

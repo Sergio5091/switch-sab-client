@@ -109,6 +109,55 @@ export default function GerantCoupons() {
     }
   }
 
+  async function handlePrintBatch(nb: number) {
+    const liste = coupons.filter(c => !c.utilise).slice(0, nb);
+    if (liste.length === 0) {
+      toast({ title: "Aucun coupon actif à imprimer", variant: "destructive" });
+      return;
+    }
+
+    // Générer les QR en SVG inline (pas besoin de chargement d'image)
+    const QRCode = (await import('qrcode')).default;
+    const rows = await Promise.all(
+      liste.map(async c => {
+        const svgString = await QRCode.toString(c.code, {
+          type: 'svg',
+          width: 100,
+          margin: 1,
+          color: { dark: '#000000', light: '#ffffff' }
+        });
+        return `
+          <div class="coupon">
+            <div class="valeur">${c.valeur.toLocaleString()} FCFA</div>
+            <div class="qr">${svgString}</div>
+            <div class="code">${c.code}</div>
+            <div class="label">Switch SAB</div>
+          </div>`;
+      })
+    );
+
+    const win = window.open("", "_blank");
+    if (!win) return;
+    win.document.write(`
+      <html><head><title>Coupons Switch SAB</title>
+      <style>
+        @page { size: A4; margin: 8mm; }
+        * { box-sizing: border-box; }
+        body { margin: 0; font-family: monospace; }
+        .grid { display: grid; grid-template-columns: repeat(4, 1fr); gap: 3mm; width: 100%; }
+        .coupon { border: 1.5px dashed #f97316; border-radius: 6px; padding: 6px 4px; text-align: center; page-break-inside: avoid; display: flex; flex-direction: column; align-items: center; gap: 3px; }
+        .valeur { font-size: 12px; font-weight: bold; color: #f97316; }
+        .qr svg { width: 90px; height: 90px; display: block; }
+        .code { font-size: 10px; font-weight: bold; letter-spacing: 1.5px; }
+        .label { font-size: 8px; color: #888; }
+      </style></head>
+      <body><div class="grid">${rows.join("")}</div>
+      <script>window.onload = function() { window.print(); window.close(); }<\/script>
+      </body></html>`);
+    win.document.close();
+    toast({ title: `${liste.length} coupons avec QR envoyés à l'imprimante` });
+  }
+
   const actifs = coupons.filter(c => !c.utilise);
   const utilises = coupons.filter(c => c.utilise);
 
@@ -146,6 +195,23 @@ export default function GerantCoupons() {
           <p className="text-xs text-muted-foreground">
             ⚠️ Les coupons générés ne peuvent pas être modifiés ni supprimés.
           </p>
+          {coupons.length > 0 && (
+            <div className="flex items-center gap-2 pt-2 border-t border-border flex-wrap">
+              <span className="text-xs text-muted-foreground">Imprimer :</span>
+              <Button variant="outline" size="sm" onClick={() => handlePrintBatch(10)} className="gap-1.5 text-xs">
+                <Printer size={13} /> 10 codes
+              </Button>
+              <Button variant="outline" size="sm" onClick={() => handlePrintBatch(20)} className="gap-1.5 text-xs">
+                <Printer size={13} /> 20 codes
+              </Button>
+              <Button variant="outline" size="sm" onClick={() => handlePrintBatch(40)} className="gap-1.5 text-xs">
+                <Printer size={13} /> 40 codes
+              </Button>
+              <Button variant="outline" size="sm" onClick={() => handlePrintBatch(actifs.length)} className="gap-1.5 text-xs">
+                <Printer size={13} /> Tout ({actifs.length})
+              </Button>
+            </div>
+          )}
         </div>
 
         <div className="bg-card border border-border rounded-xl overflow-hidden">

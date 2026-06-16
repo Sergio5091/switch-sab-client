@@ -25,12 +25,19 @@ export const creerClient = async (req, res) => {
       return res.status(409).json({ message: 'Ce pseudo est déjà utilisé' })
     }
 
+    if (telephone) {
+      const telExistant = await prisma.user.findUnique({ where: { telephone } })
+      if (telExistant) {
+        return res.status(409).json({ message: 'Ce numéro de téléphone est déjà utilisé' })
+      }
+    }
+
     const hash = await bcrypt.hash(motDePasse, 10)
 
     const client = await prisma.user.create({
       data: {
         pseudo,
-        telephone: telephone || `auto-${Date.now()}`,
+        telephone: telephone || `tel-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`,
         motDePasse: hash,
         role: 'CLIENT',
         estEnfant: estEnfant || false,
@@ -77,9 +84,15 @@ export const creerClient = async (req, res) => {
     })
   } catch (err) {
     console.error('[gerant/clients POST]', err)
-    return res.status(500).json({
-      message: 'Erreur serveur'
-    })
+    // Gérer les violations de contrainte unique explicitement
+    if (err.code === 'P2002') {
+      const champ = err.meta?.target || err.meta?.constraint || 'champ inconnu'
+      if (String(champ).includes('pseudo')) return res.status(409).json({ message: 'Ce pseudo est déjà utilisé' })
+      if (String(champ).includes('telephone')) return res.status(409).json({ message: 'Ce numéro de téléphone est déjà utilisé' })
+      if (String(champ).includes('email')) return res.status(409).json({ message: 'Cet email est déjà utilisé' })
+      return res.status(409).json({ message: `Valeur déjà utilisée (${champ})` })
+    }
+    return res.status(500).json({ message: 'Erreur serveur' })
   }
 }
 

@@ -223,19 +223,40 @@ export default function ClientHome() {
                 <SelectContent>{durees.map(d => <SelectItem key={d.id} value={String(d.id)}>{d.libelle} — {d.prix.toLocaleString()} F</SelectItem>)}</SelectContent>
               </Select>
             )}
-            {selectedDuree && creditCat && (
-              <div className="text-xs text-muted-foreground bg-muted/30 rounded-lg px-3 py-2">
-                Crédit disponible : <span className="font-semibold text-foreground">{Math.floor(creditCat.solde / 60)} min</span>
-                {creditCat.solde < selectedDuree.secondes && <span className="text-destructive ml-2">— Insuffisant</span>}
+            {catId && (
+              <div className="text-xs bg-muted/30 rounded-lg px-3 py-2 space-y-1">
+                {creditCat && creditCat.solde > 0 ? (
+                  <div className="text-muted-foreground">
+                    Crédit : <span className="font-semibold text-foreground">{Math.floor(creditCat.solde / 60)} min</span>
+                    {selectedDuree && creditCat.solde < selectedDuree.secondes && (
+                      <span className="text-destructive ml-2">— Insuffisant</span>
+                    )}
+                  </div>
+                ) : (
+                  <div className="text-muted-foreground">Aucun crédit pour cette catégorie</div>
+                )}
+                {(data?.soldeMonetaire ?? 0) > 0 && (
+                  <div className="text-primary font-medium">
+                    Solde disponible : {(data?.soldeMonetaire ?? 0).toLocaleString()} F
+                    {selectedDuree && (data?.soldeMonetaire ?? 0) >= selectedDuree.prix && (creditCat?.solde ?? 0) < selectedDuree.secondes && (
+                      <span className="text-green-400 ml-2">→ Achat direct {selectedDuree.prix.toLocaleString()} F ✓</span>
+                    )}
+                  </div>
+                )}
               </div>
             )}
           </div>
           <DialogFooter>
-            <Button onClick={handleStart} disabled={!catId || !dureeId || loading || (!!selectedDuree && !!creditCat && creditCat.solde < selectedDuree.secondes)}>
+            <Button
+              onClick={handleStart}
+              disabled={
+                !catId || !dureeId || loading ||
+                (!!selectedDuree && (creditCat?.solde ?? 0) < selectedDuree.secondes && (data?.soldeMonetaire ?? 0) < selectedDuree.prix)
+              }
+            >
               <Play size={14} className="mr-1.5" /> Démarrer
             </Button>
-          </DialogFooter>
-        </DialogContent>
+          </DialogFooter>        </DialogContent>
       </Dialog>
     </ClientLayout>
   );
