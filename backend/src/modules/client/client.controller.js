@@ -181,7 +181,7 @@ export const startSession = async (req, res) => {
     })
 
     const { getIO } = await import('../../socket.js')
-    getIO().emit('session:start', { sessionId: session.id, posteId: posteLibre.id, clientId, finPrevue })
+    try { getIO().emit('session:start', { sessionId: session.id, posteId: posteLibre.id, clientId, finPrevue }) } catch (e) { /* socket pas dispo */ }
 
     const { scheduleSessionEnd } = await import('../gerant/sessions.controller.js')
     scheduleSessionEnd(session.id, posteLibre.id, duree.secondes * 1000)

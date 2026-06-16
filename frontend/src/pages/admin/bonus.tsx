@@ -11,10 +11,10 @@ import { useToast } from "@/hooks/use-toast";
 import adminService, { ConfigBonus } from "@/services/adminService";
 
 const schema = z.object({
-  ratioJeuMinutes: z.coerce.number().min(1, "Requis"),
-  ratioBonusMinutes: z.coerce.number().min(1, "Requis"),
+  // secondes de bonus gagnées par heure de jeu
+  bonusParHeure: z.coerce.number().min(1, "Requis"),
   seuilMinutes: z.coerce.number().min(1, "Requis"),
-  validiteMois: z.coerce.number().min(1, "Requis"),
+  validiteJours: z.coerce.number().min(1, "Requis"),
 });
 type FormValues = z.infer<typeof schema>;
 
@@ -42,10 +42,9 @@ export default function AdminBonus() {
   const form = useForm<FormValues>({
     resolver: zodResolver(schema),
     defaultValues: {
-      ratioJeuMinutes: 60,
-      ratioBonusMinutes: 5,
+      bonusParHeure: 10,
       seuilMinutes: 60,
-      validiteMois: 1,
+      validiteJours: 30,
     },
   });
 
@@ -53,10 +52,9 @@ export default function AdminBonus() {
   useEffect(() => {
     if (config) {
       form.reset({
-        ratioJeuMinutes: Math.round(config.ratioSecondes / 60),
-        ratioBonusMinutes: 5, // Le backend stocke ratioSecondes, pas le ratio bonus
+        bonusParHeure: Math.round(config.ratioSecondes / 60), // ratioSecondes = secondes de bonus par heure
         seuilMinutes: Math.round(config.seuilDeblocage / 60),
-        validiteMois: Math.round(config.validitejours / 30),
+        validiteJours: config.validitejours,
       });
     }
   }, [config]);
@@ -64,9 +62,9 @@ export default function AdminBonus() {
   async function onSubmit(values: FormValues) {
     try {
       const updated = await adminService.updateConfigBonus({
-        ratioSecondes: values.ratioJeuMinutes * 60,
+        ratioSecondes: values.bonusParHeure * 60, // minutes → secondes
         seuilDeblocage: values.seuilMinutes * 60,
-        validitejours: values.validiteMois * 30,
+        validitejours: values.validiteJours,
       });
       setConfig(updated);
       toast({ title: "Configuration bonus sauvegardée" });
@@ -75,8 +73,7 @@ export default function AdminBonus() {
     }
   }
 
-  const rj = form.watch("ratioJeuMinutes");
-  const rb = form.watch("ratioBonusMinutes");
+  const bonus = form.watch("bonusParHeure");
 
   return (
     <AdminLayout>
@@ -90,11 +87,11 @@ export default function AdminBonus() {
           <Info size={16} className="text-primary mt-0.5 flex-shrink-0" />
           <div className="text-sm text-foreground">
             <span className="font-semibold">Règle actuelle :</span>{" "}
-            Pour chaque <span className="text-primary font-bold">{rj} minutes</span> jouées,
-            le client gagne <span className="text-primary font-bold">{rb} minutes</span> de bonus.
+            Pour chaque <span className="text-primary font-bold">heure jouée</span>,
+            le client gagne <span className="text-primary font-bold">{bonus} minutes</span> de bonus.
             <br />
             <span className="text-muted-foreground text-xs mt-1 block">
-              Soit {Math.round(rb / rj * 100 * 10) / 10}% de temps offert.
+              Le bonus est crédité automatiquement à la fin de chaque session.
             </span>
           </div>
         </div>
@@ -107,39 +104,29 @@ export default function AdminBonus() {
 
           <Form {...form}>
             <form onSubmit={form.handleSubmit(onSubmit)} className="space-y-4">
-              <div className="grid grid-cols-2 gap-4">
-                <FormField control={form.control} name="ratioJeuMinutes" render={({ field }) => (
-                  <FormItem>
-                    <FormLabel>Minutes de jeu</FormLabel>
-                    <FormControl><Input {...field} type="number" min={1} data-testid="input-ratio-jeu" /></FormControl>
-                    <FormDescription className="text-xs">Base de calcul</FormDescription>
-                    <FormMessage />
-                  </FormItem>
-                )} />
-                <FormField control={form.control} name="ratioBonusMinutes" render={({ field }) => (
-                  <FormItem>
-                    <FormLabel>Minutes de bonus</FormLabel>
-                    <FormControl><Input {...field} type="number" min={1} data-testid="input-ratio-bonus" /></FormControl>
-                    <FormDescription className="text-xs">Temps offert</FormDescription>
-                    <FormMessage />
-                  </FormItem>
-                )} />
-              </div>
-
-              <FormField control={form.control} name="seuilMinutes" render={({ field }) => (
+              <FormField control={form.control} name="bonusParHeure" render={({ field }) => (
                 <FormItem>
-                  <FormLabel className="flex items-center gap-2"><Clock size={13} /> Seuil minimum (minutes cumulées)</FormLabel>
-                  <FormControl><Input {...field} type="number" min={1} data-testid="input-seuil" /></FormControl>
-                  <FormDescription className="text-xs">Le bonus n'est disponible qu'une fois ce seuil atteint</FormDescription>
+                  <FormLabel>Minutes de bonus par heure jouée</FormLabel>
+                  <FormControl><Input {...field} type="number" min={1} data-testid="input-bonus-par-heure" /></FormControl>
+                  <FormDescription className="text-xs">Ex: 10 → le client gagne 10 min gratuites pour 1h jouée</FormDescription>
                   <FormMessage />
                 </FormItem>
               )} />
 
-              <FormField control={form.control} name="validiteMois" render={({ field }) => (
+              <FormField control={form.control} name="seuilMinutes" render={({ field }) => (
                 <FormItem>
-                  <FormLabel>Validité du bonus (mois)</FormLabel>
+                  <FormLabel className="flex items-center gap-2"><Clock size={13} /> Seuil de déblocage (minutes accumulées)</FormLabel>
+                  <FormControl><Input {...field} type="number" min={1} data-testid="input-seuil" /></FormControl>
+                  <FormDescription className="text-xs">Le bonus n'est utilisable qu'une fois ce seuil atteint</FormDescription>
+                  <FormMessage />
+                </FormItem>
+              )} />
+
+              <FormField control={form.control} name="validiteJours" render={({ field }) => (
+                <FormItem>
+                  <FormLabel>Validité du bonus (jours)</FormLabel>
                   <FormControl><Input {...field} type="number" min={1} data-testid="input-validite" /></FormControl>
-                  <FormDescription className="text-xs">Bonus remis à zéro si inactif depuis N mois</FormDescription>
+                  <FormDescription className="text-xs">Le bonus expire si le client n'est pas venu depuis N jours</FormDescription>
                   <FormMessage />
                 </FormItem>
               )} />
