@@ -19,6 +19,7 @@ const schemaCreate = z.object({
   telephone: z.string().min(8, "Numéro de téléphone requis"),
   estEnfant: z.boolean(),
   codeParental: z.string().optional(),
+  codeParrainage: z.string().optional(), // pseudo ou téléphone du parrain
 });
 const schemaEdit = z.object({
   pseudo: z.string().min(2, "Pseudo requis"),
@@ -45,7 +46,7 @@ export default function GerantClients() {
 
   const formCreate = useForm<CreateValues>({
     resolver: zodResolver(schemaCreate),
-    defaultValues: { pseudo: "", motDePasse: "", telephone: "", estEnfant: false, codeParental: "" },
+    defaultValues: { pseudo: "", motDePasse: "", telephone: "", estEnfant: false, codeParental: "", codeParrainage: "" },
   });  const formEdit = useForm<EditValues>({
     resolver: zodResolver(schemaEdit),
     defaultValues: { pseudo: "", telephone: "", nom: "", prenom: "", estEnfant: false, codeParental: "", active: true },
@@ -75,10 +76,11 @@ export default function GerantClients() {
         telephone: values.telephone,
         estEnfant: values.estEnfant,
         codeParental: values.codeParental || undefined,
+        codeParrainage: values.codeParrainage || undefined,
       });
       toast({
         title: "Client créé",
-        description: `Pseudo : ${values.pseudo} — Tél : ${values.telephone} — Code parrainage : ${values.telephone || values.pseudo}`,
+        description: `Pseudo : ${values.pseudo} — Tél : ${values.telephone}${values.codeParrainage ? ` — Parrain : ${values.codeParrainage}` : ""}`,
       });
       gerantService.getClients().then(setClients);
       setOpen(false);
@@ -189,6 +191,13 @@ export default function GerantClients() {
                     <FormControl><Input {...field} placeholder="+229 07XXXXXXXX" /></FormControl>
                     <p className="text-xs text-muted-foreground">Utilisé comme code de parrainage</p>
                     <FormMessage />
+                  </FormItem>
+                )} />
+                <FormField control={formCreate.control} name="codeParrainage" render={({ field }) => (
+                  <FormItem>
+                    <FormLabel className="flex items-center gap-1.5"><Share2 size={11} />Code de parrainage (optionnel)</FormLabel>
+                    <FormControl><Input {...field} placeholder="Pseudo ou téléphone du parrain" /></FormControl>
+                    <p className="text-xs text-muted-foreground">Le parrain recevra un bonus si configuré</p>
                   </FormItem>
                 )} />
                 <FormField control={formCreate.control} name="estEnfant" render={({ field }) => (

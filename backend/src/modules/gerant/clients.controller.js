@@ -5,16 +5,14 @@ import logger from '../../config/logger.js'
 // ─── POST /gerant/clients → Créer client ──────────────────────────────────
 
 export const creerClient = async (req, res) => {
-  const { pseudo, motDePasse, telephone, estEnfant, codeParental } = req.body
+  const { pseudo, motDePasse, telephone, estEnfant, codeParental, codeParrainage } = req.body
 
   if (!pseudo || !motDePasse) {
     return res.status(400).json({ message: 'pseudo et motDePasse requis' })
   }
-
   if (motDePasse.length < 6) {
     return res.status(400).json({ message: 'Le mot de passe doit contenir au moins 6 caractères' })
   }
-
   if (estEnfant && !codeParental) {
     return res.status(400).json({ message: 'Code parental requis pour les enfants' })
   }
@@ -29,6 +27,25 @@ export const creerClient = async (req, res) => {
       const telExistant = await prisma.user.findUnique({ where: { telephone } })
       if (telExistant) {
         return res.status(409).json({ message: 'Ce numéro de téléphone est déjà utilisé' })
+      }
+    }
+
+    // Résoudre le parrain si un code de parrainage est fourni
+    let parrain = null
+    if (codeParrainage && codeParrainage.trim()) {
+      parrain = await prisma.user.findFirst({
+        where: {
+          salleId: req.user.salle_id,
+          role: 'CLIENT',
+          active: true,
+          OR: [
+            { pseudo: codeParrainage.trim() },
+            { telephone: codeParrainage.trim() }
+          ]
+        }
+      })
+      if (!parrain) {
+        return res.status(404).json({ message: `Code de parrainage invalide : aucun client trouvé avec "${codeParrainage}"` })
       }
     }
 
@@ -51,27 +68,47 @@ export const creerClient = async (req, res) => {
     const categories = await prisma.categorie.findMany({
       where: { salleId: req.user.salle_id }
     })
-
     for (const cat of categories) {
       await prisma.credit.create({
-        data: {
-          clientId: client.id,
-          categorieId: cat.id,
-          solde: 0
-        }
+        data: { clientId: client.id, categorieId: cat.id, solde: 0 }
       })
     }
 
     // Créer bonus
     await prisma.bonus.create({
-      data: {
-        clientId: client.id,
-        solde: 0,
-        disponible: false
-      }
+      data: { clientId: client.id, solde: 0, disponible: false }
     })
 
-    logger.info(`Client créé : ${pseudo} (${client.telephone})`)
+    // Appliquer le bonus parrain si applicable
+    if (parrain) {
+      const configBonus = await prisma.configBonus.findUnique({
+        where: { salleId: req.user.salle_id }
+      })
+
+      if (configBonus && configBonus.bonusParrain > 0) {
+        // Bonus parrain = bonusParrain% de l'heure de jeu standard en secondes
+        // Ex: bonusParrain = 10% → 360s (10% de 3600s)
+        const bonusSecondes = Math.floor((configBonus.bonusParrain / 100) * 3600)
+
+        if (bonusSecondes > 0) {
+          const bonusParrain = await prisma.bonus.findUnique({ where: { clientId: parrain.id } })
+          if (bonusParrain) {
+            const nouveauSolde = bonusParrain.solde + bonusSecondes
+            await prisma.bonus.update({
+              where: { id: bonusParrain.id },
+              data: {
+                solde: nouveauSolde,
+                disponible: bonusParrain.disponible || nouveauSolde >= configBonus.seuilDeblocage,
+                derniereActivite: new Date()
+              }
+            })
+            logger.info(`Bonus parrainage : ${parrain.pseudo} reçoit +${Math.floor(bonusSecondes / 60)} min pour avoir parrainé ${pseudo}`)
+          }
+        }
+      }
+    }
+
+    logger.info(`Client créé : ${pseudo} (${client.telephone})${parrain ? ` — parrainé par ${parrain.pseudo}` : ''}`)
 
     return res.status(201).json({
       id: client.id,
@@ -80,7 +117,7 @@ export const creerClient = async (req, res) => {
       role: client.role,
       estEnfant: client.estEnfant,
       salleId: client.salleId,
-      motDePasseTemporaire: motDePasse // À communiquer au client
+      parrain: parrain ? { pseudo: parrain.pseudo } : null
     })
   } catch (err) {
     console.error('[gerant/clients POST]', err)
