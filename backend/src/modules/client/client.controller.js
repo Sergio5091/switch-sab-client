@@ -12,7 +12,7 @@ export const getHome = async (req, res) => {
         id: true, pseudo: true, salleId: true,
         credits: { select: { solde: true, categorie: { select: { id: true, nom: true } } } },
         bonus: { select: { solde: true, disponible: true } },
-        transactions: { select: { montant: true, type: true }, where: { type: { in: ['RECHARGE_GERANT', 'RECHARGE_COUPON'] } } },
+        transactions: { select: { montant: true, type: true }, where: { type: { in: ['RECHARGE_GERANT', 'RECHARGE_COUPON', 'BONUS'] } } },
         sessions: {
           where: { statut: { in: ['ACTIVE', 'ARRETEE', 'TERMINEE'] } },
           select: { id: true, statut: true, fin: true, estBonus: true, debut: true, duree: { select: { libelle: true, secondes: true, prix: true } }, poste: { select: { nom: true } } },
@@ -38,7 +38,13 @@ export const getHome = async (req, res) => {
       }
     })
 
-    const soldeMonetaire = user.transactions.reduce((sum, t) => sum + t.montant, 0)
+    // soldeMonetaire = total recharges + bonus parrainage - dépenses sessions
+    const totalEncaisse = user.transactions.reduce((sum, t) => sum + t.montant, 0)
+    const depensesSessions = await prisma.transaction.aggregate({
+      where: { clientId, type: 'SESSION' },
+      _sum: { montant: true }
+    })
+    const soldeMonetaire = totalEncaisse - (depensesSessions._sum.montant ?? 0)
 
     return res.json({
       pseudo: user.pseudo,
@@ -119,7 +125,7 @@ export const startSession = async (req, res) => {
         where: { id: clientId },
         select: {
           transactions: {
-            where: { type: { in: ['RECHARGE_GERANT', 'RECHARGE_COUPON'] } },
+            where: { type: { in: ['RECHARGE_GERANT', 'RECHARGE_COUPON', 'BONUS'] } },
             select: { montant: true }
           }
         }

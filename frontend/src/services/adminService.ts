@@ -42,13 +42,15 @@ export interface ConfigBonus {
   seuilDeblocage: number;
   validitejours: number;
   reductionInvite: number;
-  bonusParrain: number;
+  bonusParrain: number;  // montant FCFA offert au parrain
+  bonusFilleul: number;  // montant FCFA offert au filleul
 }
 
 export interface PromoConfig {
   salleId: number;
   reductionInvite: number;
   bonusParrain: number;
+  bonusFilleul: number;
 }
 
 export interface Coupon {
@@ -179,7 +181,7 @@ const adminService = {
     return res.data;
   },
 
-  updateConfigBonus: async (data: { ratioSecondes?: number; seuilDeblocage?: number; validitejours?: number; reductionInvite?: number; bonusParrain?: number }): Promise<ConfigBonus> => {
+  updateConfigBonus: async (data: { ratioSecondes?: number; seuilDeblocage?: number; validitejours?: number; reductionInvite?: number; bonusParrain?: number; bonusFilleul?: number }): Promise<ConfigBonus> => {
     const res = await api.patch('/admin/bonus/config', data);
     return res.data;
   },
@@ -191,7 +193,7 @@ const adminService = {
     return res.data;
   },
 
-  updatePromoConfig: async (data: { reductionInvite?: number; bonusParrain?: number }): Promise<PromoConfig> => {
+  updatePromoConfig: async (data: { reductionInvite?: number; bonusParrain?: number; bonusFilleul?: number }): Promise<PromoConfig> => {
     const res = await api.patch('/admin/promo/config', data);
     return res.data;
   },

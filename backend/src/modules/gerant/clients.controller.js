@@ -13,9 +13,6 @@ export const creerClient = async (req, res) => {
   if (motDePasse.length < 6) {
     return res.status(400).json({ message: 'Le mot de passe doit contenir au moins 6 caractères' })
   }
-  if (estEnfant && !codeParental) {
-    return res.status(400).json({ message: 'Code parental requis pour les enfants' })
-  }
 
   try {
     const pseudoExistant = await prisma.user.findUnique({ where: { pseudo } })
@@ -79,36 +76,55 @@ export const creerClient = async (req, res) => {
       data: { clientId: client.id, solde: 0, disponible: false }
     })
 
-    // Appliquer le bonus parrain si applicable
+    // Appliquer les bonus de parrainage si applicable
     if (parrain) {
       const configBonus = await prisma.configBonus.findUnique({
         where: { salleId: req.user.salle_id }
       })
 
-      if (configBonus && configBonus.bonusParrain > 0) {
-        // Bonus parrain = bonusParrain% de l'heure de jeu standard en secondes
-        // Ex: bonusParrain = 10% → 360s (10% de 3600s)
-        const bonusSecondes = Math.floor((configBonus.bonusParrain / 100) * 3600)
+      if (configBonus && (configBonus.bonusParrain > 0 || configBonus.bonusFilleul > 0)) {
+        try {
+          await prisma.$transaction(async (tx) => {
+            // ── Bonus PARRAIN : créditer son solde monétaire ───────────────
+            if (configBonus.bonusParrain > 0) {
+              await tx.transaction.create({
+                data: {
+                  clientId: parrain.id,
+                  montant: configBonus.bonusParrain,
+                  type: 'BONUS',
+                }
+              })
+              logger.info(`Parrainage : ${parrain.pseudo} reçoit +${configBonus.bonusParrain} FCFA (solde monétaire) pour avoir parrainé ${pseudo}`)
+            }
 
-        if (bonusSecondes > 0) {
-          const bonusParrain = await prisma.bonus.findUnique({ where: { clientId: parrain.id } })
-          if (bonusParrain) {
-            const nouveauSolde = bonusParrain.solde + bonusSecondes
-            await prisma.bonus.update({
-              where: { id: bonusParrain.id },
-              data: {
-                solde: nouveauSolde,
-                disponible: bonusParrain.disponible || nouveauSolde >= configBonus.seuilDeblocage,
-                derniereActivite: new Date()
-              }
-            })
-            logger.info(`Bonus parrainage : ${parrain.pseudo} reçoit +${Math.floor(bonusSecondes / 60)} min pour avoir parrainé ${pseudo}`)
-          }
+            // ── Bonus FILLEUL : créditer son solde monétaire ───────────────
+            if (configBonus.bonusFilleul > 0) {
+              await tx.transaction.create({
+                data: {
+                  clientId: client.id,
+                  montant: configBonus.bonusFilleul,
+                  type: 'BONUS',
+                }
+              })
+              logger.info(`Parrainage : ${pseudo} (filleul id=${client.id}) reçoit +${configBonus.bonusFilleul} FCFA (solde monétaire) à l'inscription`)
+            }
+          })
+          logger.info(`Parrainage transaction OK — parrain=${parrain.id}, filleul=${client.id}`)
+        } catch (bonusErr) {
+          logger.error(`Parrainage ECHEC transaction bonus — parrain=${parrain.id}, filleul=${client.id}`, bonusErr)
+          // On ne fait pas échouer la création du client pour autant
         }
+      } else {
+        logger.warn(`Parrainage : configBonus introuvable ou montants à 0 pour salleId=${req.user.salle_id}`)
       }
-    }
+    } // fin if (parrain)
 
     logger.info(`Client créé : ${pseudo} (${client.telephone})${parrain ? ` — parrainé par ${parrain.pseudo}` : ''}`)
+
+    // Récupérer la config bonus pour l'inclure dans la réponse
+    const configBonusReponse = parrain
+      ? await prisma.configBonus.findUnique({ where: { salleId: req.user.salle_id } })
+      : null
 
     return res.status(201).json({
       id: client.id,
@@ -117,7 +133,11 @@ export const creerClient = async (req, res) => {
       role: client.role,
       estEnfant: client.estEnfant,
       salleId: client.salleId,
-      parrain: parrain ? { pseudo: parrain.pseudo } : null
+      parrain: parrain ? { pseudo: parrain.pseudo } : null,
+      bonusAppliques: parrain && configBonusReponse ? {
+        bonusParrain: configBonusReponse.bonusParrain,
+        bonusFilleul: configBonusReponse.bonusFilleul,
+      } : null
     })
   } catch (err) {
     console.error('[gerant/clients POST]', err)
@@ -159,12 +179,30 @@ export const listerClients = async (req, res) => {
         },
         bonus: {
           select: { solde: true, disponible: true }
+        },
+        transactions: {
+          select: { montant: true, type: true }
         }
       },
       orderBy: { createdAt: 'desc' }
     })
 
-    return res.json(clients)
+    // Calculer le solde monétaire pour chaque client
+    const clientsAvecSolde = clients.map(c => {
+      const totalEncaisse = c.transactions
+        .filter(t => ['RECHARGE_GERANT', 'RECHARGE_COUPON', 'BONUS'].includes(t.type))
+        .reduce((sum, t) => sum + t.montant, 0)
+      const totalDepense = c.transactions
+        .filter(t => t.type === 'SESSION')
+        .reduce((sum, t) => sum + t.montant, 0)
+      const { transactions: _, ...clientSansTransactions } = c
+      return {
+        ...clientSansTransactions,
+        soldeMonetaire: totalEncaisse - totalDepense
+      }
+    })
+
+    return res.json(clientsAvecSolde)
   } catch (err) {
     console.error('[gerant/clients GET]', err)
     return res.status(500).json({

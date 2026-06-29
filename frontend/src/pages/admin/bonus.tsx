@@ -6,15 +6,16 @@ import { Form, FormControl, FormField, FormItem, FormLabel, FormMessage, FormDes
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { z } from "zod";
-import { Gift, Clock, Info } from "lucide-react";
+import { Gift, Clock, Info, Share2 } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
 import adminService, { ConfigBonus } from "@/services/adminService";
 
 const schema = z.object({
-  // secondes de bonus gagnées par heure de jeu
   bonusParHeure: z.coerce.number().min(1, "Requis"),
-  seuilMinutes: z.coerce.number().min(1, "Requis"),
+  seuilMinutes:  z.coerce.number().min(1, "Requis"),
   validiteJours: z.coerce.number().min(1, "Requis"),
+  bonusParrain:  z.coerce.number().min(0, "Doit être ≥ 0"),
+  bonusFilleul:  z.coerce.number().min(0, "Doit être ≥ 0"),
 });
 type FormValues = z.infer<typeof schema>;
 
@@ -26,7 +27,6 @@ export default function AdminBonus() {
     adminService.getConfigBonus()
       .then(setConfig)
       .catch(() => {
-        // Pas encore créée, valeurs par défaut
         setConfig({
           id: 0,
           salleId: 0,
@@ -35,6 +35,7 @@ export default function AdminBonus() {
           validitejours: 30,
           reductionInvite: 0,
           bonusParrain: 0,
+          bonusFilleul: 0,
         });
       });
   }, []);
@@ -43,18 +44,21 @@ export default function AdminBonus() {
     resolver: zodResolver(schema),
     defaultValues: {
       bonusParHeure: 10,
-      seuilMinutes: 60,
+      seuilMinutes:  60,
       validiteJours: 30,
+      bonusParrain:  0,
+      bonusFilleul:  0,
     },
   });
 
-  // Sync avec le backend
   useEffect(() => {
     if (config) {
       form.reset({
-        bonusParHeure: Math.round(config.ratioSecondes / 60), // ratioSecondes = secondes de bonus par heure
-        seuilMinutes: Math.round(config.seuilDeblocage / 60),
+        bonusParHeure: Math.round(config.ratioSecondes / 60),
+        seuilMinutes:  Math.round(config.seuilDeblocage / 60),
         validiteJours: config.validitejours,
+        bonusParrain:  config.bonusParrain ?? 0,
+        bonusFilleul:  (config as any).bonusFilleul ?? 0,
       });
     }
   }, [config]);
@@ -62,9 +66,11 @@ export default function AdminBonus() {
   async function onSubmit(values: FormValues) {
     try {
       const updated = await adminService.updateConfigBonus({
-        ratioSecondes: values.bonusParHeure * 60, // minutes → secondes
+        ratioSecondes: values.bonusParHeure * 60,
         seuilDeblocage: values.seuilMinutes * 60,
         validitejours: values.validiteJours,
+        bonusParrain:  values.bonusParrain,
+        bonusFilleul:  values.bonusFilleul,
       });
       setConfig(updated);
       toast({ title: "Configuration bonus sauvegardée" });
@@ -96,10 +102,11 @@ export default function AdminBonus() {
           </div>
         </div>
 
+        {/* Bonus fidélité */}
         <div className="bg-card border border-border rounded-xl p-5">
           <div className="flex items-center gap-2 mb-4">
             <Gift size={16} className="text-primary" />
-            <h2 className="text-sm font-semibold text-foreground">Paramètres</h2>
+            <h2 className="text-sm font-semibold text-foreground">Bonus fidélité</h2>
           </div>
 
           <Form {...form}>
@@ -130,6 +137,33 @@ export default function AdminBonus() {
                   <FormMessage />
                 </FormItem>
               )} />
+
+              {/* Parrainage */}
+              <div className="border-t border-border pt-4 mt-2">
+                <div className="flex items-center gap-2 mb-3">
+                  <Share2 size={14} className="text-primary" />
+                  <span className="text-sm font-semibold text-foreground">Bonus parrainage</span>
+                </div>
+                <p className="text-xs text-muted-foreground mb-3">
+                  Montants crédités en FCFA sur le solde lors d'un parrainage réussi.
+                </p>
+                <div className="grid grid-cols-2 gap-3">
+                  <FormField control={form.control} name="bonusParrain" render={({ field }) => (
+                    <FormItem>
+                      <FormLabel>Bonus parrain (FCFA)</FormLabel>
+                      <FormControl><Input {...field} type="number" min={0} placeholder="ex: 1000" data-testid="input-bonus-parrain" /></FormControl>
+                      <FormMessage />
+                    </FormItem>
+                  )} />
+                  <FormField control={form.control} name="bonusFilleul" render={({ field }) => (
+                    <FormItem>
+                      <FormLabel>Bonus filleul (FCFA)</FormLabel>
+                      <FormControl><Input {...field} type="number" min={0} placeholder="ex: 500" data-testid="input-bonus-filleul" /></FormControl>
+                      <FormMessage />
+                    </FormItem>
+                  )} />
+                </div>
+              </div>
 
               <Button type="submit" className="w-full" data-testid="button-save-bonus">
                 Sauvegarder la configuration

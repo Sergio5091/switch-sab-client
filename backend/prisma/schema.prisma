@@ -211,7 +211,8 @@ model ConfigBonus {
   seuilDeblocage  Int                        // secondes pour débloquer
   validitejours   Int   @default(30)
   reductionInvite Float @default(0)          // % réduction client invité
-  bonusParrain    Float @default(0)          // % bonus parrain
+  bonusParrain    Float @default(0)          // montant FCFA offert au parrain lors d'un parrainage
+  bonusFilleul    Float @default(0)          // montant FCFA offert au filleul à son inscription
 
   salle Salle @relation(fields: [salleId], references: [id])
 }

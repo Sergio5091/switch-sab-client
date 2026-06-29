@@ -8,7 +8,7 @@ import { Switch } from "@/components/ui/switch";
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { z } from "zod";
-import { Plus, Search, User, Phone, Gift, Clock, Lock, Share2 } from "lucide-react";
+import { Plus, Search, User, Phone, Gift, Clock, Lock, Share2, Wallet } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
 import { Badge } from "@/components/ui/badge";
 import gerantService, { Client } from "@/services/gerantService";
@@ -16,10 +16,17 @@ import gerantService, { Client } from "@/services/gerantService";
 const schemaCreate = z.object({
   pseudo: z.string().min(2, "Pseudo requis"),
   motDePasse: z.string().min(6, "Mot de passe requis (min 6 caractères)"),
-  telephone: z.string().min(8, "Numéro de téléphone requis"),
+  telephone: z.string().optional(),
   estEnfant: z.boolean(),
-  codeParental: z.string().optional(),
-  codeParrainage: z.string().optional(), // pseudo ou téléphone du parrain
+  codeParrainage: z.string().optional(),
+}).superRefine((data, ctx) => {
+  if (!data.estEnfant && !data.telephone) {
+    ctx.addIssue({
+      code: z.ZodIssueCode.custom,
+      message: "Numéro de téléphone requis pour les comptes non-enfants",
+      path: ["telephone"],
+    });
+  }
 });
 const schemaEdit = z.object({
   pseudo: z.string().min(2, "Pseudo requis"),
@@ -27,7 +34,6 @@ const schemaEdit = z.object({
   nom: z.string().optional(),
   prenom: z.string().optional(),
   estEnfant: z.boolean(),
-  codeParental: z.string().optional(),
   active: z.boolean(),
 });
 type CreateValues = z.infer<typeof schemaCreate>;
@@ -46,10 +52,11 @@ export default function GerantClients() {
 
   const formCreate = useForm<CreateValues>({
     resolver: zodResolver(schemaCreate),
-    defaultValues: { pseudo: "", motDePasse: "", telephone: "", estEnfant: false, codeParental: "", codeParrainage: "" },
-  });  const formEdit = useForm<EditValues>({
+    defaultValues: { pseudo: "", motDePasse: "", telephone: "", estEnfant: false, codeParrainage: "" },
+  });
+  const formEdit = useForm<EditValues>({
     resolver: zodResolver(schemaEdit),
-    defaultValues: { pseudo: "", telephone: "", nom: "", prenom: "", estEnfant: false, codeParental: "", active: true },
+    defaultValues: { pseudo: "", telephone: "", nom: "", prenom: "", estEnfant: false, active: true },
   });
 
   const filtered = clients.filter(c =>
@@ -59,12 +66,12 @@ export default function GerantClients() {
 
   function openCreate() {
     setEditing(null);
-    formCreate.reset({ pseudo: "", motDePasse: "", telephone: "", estEnfant: false, codeParental: "" });
+    formCreate.reset({ pseudo: "", motDePasse: "", telephone: "", estEnfant: false, codeParrainage: "" });
     setOpen(true);
   }
   function openEdit(c: Client) {
     setEditing(c);
-    formEdit.reset({ pseudo: c.pseudo, telephone: c.telephone ?? "", nom: c.nom ?? "", prenom: c.prenom ?? "", estEnfant: c.estEnfant, codeParental: c.codeParental ?? "", active: c.active });
+    formEdit.reset({ pseudo: c.pseudo, telephone: c.telephone ?? "", nom: c.nom ?? "", prenom: c.prenom ?? "", estEnfant: c.estEnfant, active: c.active });
     setOpen(true);
   }
 
@@ -75,13 +82,18 @@ export default function GerantClients() {
         motDePasse: values.motDePasse,
         telephone: values.telephone,
         estEnfant: values.estEnfant,
-        codeParental: values.codeParental || undefined,
         codeParrainage: values.codeParrainage || undefined,
-      });
-      toast({
-        title: "Client créé",
-        description: `Pseudo : ${values.pseudo} — Tél : ${values.telephone}${values.codeParrainage ? ` — Parrain : ${values.codeParrainage}` : ""}`,
-      });
+      }) as any;
+
+      let description = `Pseudo : ${values.pseudo}${values.telephone ? ` — Tél : ${values.telephone}` : ''}`;
+      if (created.parrain && created.bonusAppliques) {
+        const { bonusParrain, bonusFilleul } = created.bonusAppliques;
+        description += ` — Parrain : ${created.parrain.pseudo}`;
+        if (bonusParrain > 0) description += ` (+${bonusParrain.toLocaleString()} FCFA crédités au parrain)`;
+        if (bonusFilleul > 0) description += ` — Filleul crédité de ${bonusFilleul.toLocaleString()} FCFA`;
+      }
+
+      toast({ title: "Client créé", description });
       gerantService.getClients().then(setClients);
       setOpen(false);
     } catch (err: any) {
@@ -102,7 +114,6 @@ export default function GerantClients() {
   }
 
   const isEnfantCreate = formCreate.watch("estEnfant");
-  const isEnfantEdit = formEdit.watch("estEnfant");
 
   return (
     <AdminLayout>
@@ -145,6 +156,12 @@ export default function GerantClients() {
                   </div>
                 </div>
                 <div className="flex items-center gap-3 flex-shrink-0 text-xs text-muted-foreground">
+                  {(c.soldeMonetaire ?? 0) > 0 && (
+                    <div className="text-right">
+                      <div className="font-medium text-foreground">Solde</div>
+                      <div className="flex items-center gap-1 text-green-400"><Wallet size={9} /> {(c.soldeMonetaire ?? 0).toLocaleString()} F</div>
+                    </div>
+                  )}
                   {c.credits?.filter(cr => cr.solde > 0).map(cr => (
                     <div key={cr.id} className="text-right">
                       <div className="font-medium text-foreground">{cr.categorie.nom}</div>
@@ -187,8 +204,8 @@ export default function GerantClients() {
                 )} />
                 <FormField control={formCreate.control} name="telephone" render={({ field }) => (
                   <FormItem>
-                    <FormLabel className="flex items-center gap-1.5"><Phone size={11} />Téléphone <span className="text-destructive">*</span></FormLabel>
-                    <FormControl><Input {...field} placeholder="+229 07XXXXXXXX" /></FormControl>
+                    <FormLabel className="flex items-center gap-1.5"><Phone size={11} />Téléphone {isEnfantCreate ? "(optionnel pour les comptes enfants)" : ""}</FormLabel>
+                    <FormControl><Input {...field} placeholder="+229 07XXXXXXXX" data-testid="input-telephone" /></FormControl>
                     <p className="text-xs text-muted-foreground">Utilisé comme code de parrainage</p>
                     <FormMessage />
                   </FormItem>
@@ -196,8 +213,8 @@ export default function GerantClients() {
                 <FormField control={formCreate.control} name="codeParrainage" render={({ field }) => (
                   <FormItem>
                     <FormLabel className="flex items-center gap-1.5"><Share2 size={11} />Code de parrainage (optionnel)</FormLabel>
-                    <FormControl><Input {...field} placeholder="Pseudo ou téléphone du parrain" /></FormControl>
-                    <p className="text-xs text-muted-foreground">Le parrain recevra un bonus si configuré</p>
+                    <FormControl><Input {...field} placeholder="Pseudo ou téléphone du parrain" data-testid="input-code-parrainage" /></FormControl>
+                    <p className="text-xs text-muted-foreground">Le parrain et le filleul recevront les bonus configurés</p>
                   </FormItem>
                 )} />
                 <FormField control={formCreate.control} name="estEnfant" render={({ field }) => (
@@ -206,14 +223,6 @@ export default function GerantClients() {
                     <FormControl><Switch checked={field.value} onCheckedChange={field.onChange} /></FormControl>
                   </FormItem>
                 )} />
-                {isEnfantCreate && (
-                  <FormField control={formCreate.control} name="codeParental" render={({ field }) => (
-                    <FormItem>
-                      <FormLabel>Code parental</FormLabel>
-                      <FormControl><Input {...field} placeholder="Code de contrôle parental" /></FormControl>
-                    </FormItem>
-                  )} />
-                )}
                 <DialogFooter><Button type="submit">Créer</Button></DialogFooter>
               </form>
             </Form>
@@ -243,11 +252,6 @@ export default function GerantClients() {
                 <FormField control={formEdit.control} name="estEnfant" render={({ field }) => (
                   <FormItem className="flex items-center gap-3"><FormLabel className="mt-0">Compte enfant</FormLabel><FormControl><Switch checked={field.value} onCheckedChange={field.onChange} /></FormControl></FormItem>
                 )} />
-                {isEnfantEdit && (
-                  <FormField control={formEdit.control} name="codeParental" render={({ field }) => (
-                    <FormItem><FormLabel>Code parental</FormLabel><FormControl><Input {...field} /></FormControl></FormItem>
-                  )} />
-                )}
                 <FormField control={formEdit.control} name="active" render={({ field }) => (
                   <FormItem className="flex items-center gap-3"><FormLabel className="mt-0">Compte actif</FormLabel><FormControl><Switch checked={field.value} onCheckedChange={field.onChange} /></FormControl></FormItem>
                 )} />

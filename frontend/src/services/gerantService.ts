@@ -3,16 +3,16 @@ import api from './api';
 export interface Client {
   id: number;
   pseudo: string;
-  telephone: string;
+  telephone?: string;
   email?: string;
   nom?: string;
   prenom?: string;
   estEnfant: boolean;
-  codeParental?: string;
   active: boolean;
   createdAt: string;
   credits: { id: number; solde: number; categorie: { id: number; nom: string } }[];
   bonus?: { solde: number; disponible: boolean };
+  soldeMonetaire?: number;
 }
 
 export interface Session {
@@ -126,12 +126,12 @@ const gerantService = {
     return res.data;
   },
 
-  createClient: async (data: { pseudo: string; motDePasse: string; estEnfant?: boolean; codeParental?: string }): Promise<{ id: number; pseudo: string; telephone: string }> => {
+  createClient: async (data: { pseudo: string; motDePasse: string; telephone?: string; estEnfant?: boolean; codeParrainage?: string }): Promise<{ id: number; pseudo: string; telephone?: string }> => {
     const res = await api.post('/gerant/clients', data);
     return res.data;
   },
 
-  updateClient: async (id: number, data: { pseudo?: string; email?: string; nom?: string; prenom?: string; estEnfant?: boolean; codeParental?: string; active?: boolean }): Promise<Client> => {
+  updateClient: async (id: number, data: { pseudo?: string; telephone?: string; email?: string; nom?: string; prenom?: string; estEnfant?: boolean; active?: boolean }): Promise<Client> => {
     const res = await api.patch(`/gerant/clients/${id}`, data);
     return res.data;
   },
