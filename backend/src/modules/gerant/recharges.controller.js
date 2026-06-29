@@ -97,12 +97,6 @@ export const creerRecharge = async (req, res) => {
     return res.status(201).json({
       message: 'Recharge effectuée',
       transaction: recharge,
-      creditUpdated: {
-        clientId: Number(clientId),
-        categorieId: Number(categorieId),
-        ancienSolde: credit.solde,
-        nouveauSolde: credit.solde + duree.secondes
-      }
     })
   } catch (err) {
     console.error('[gerant/recharges POST]', err)
