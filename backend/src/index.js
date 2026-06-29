@@ -6,6 +6,8 @@ import { checkLicenceAtStartup, requireLicence } from './middlewares/licence.mid
 import prisma from './services/prismaClient.js'
 import logger from './config/logger.js'
 import { initSessionScheduler } from './services/sessionScheduler.js'
+import { demarrerSchedulerRapport } from './services/rapportScheduler.js'
+import { verifierSMTP } from './services/mailService.js'
 
 // Routes
 import authRoutes     from './modules/auth/auth.routes.js'
@@ -73,6 +75,12 @@ await cleanupSessionsAuDemarrage()
 
 // Reprise des timers de session (fin automatique)
 await initSessionScheduler()
+
+// Scheduler rapport journalier (envoi mail veille chaque matin)
+demarrerSchedulerRapport()
+
+// Vérification SMTP (non bloquante)
+verifierSMTP()
 
 // Middleware licence sur toutes les routes (sauf /auth/login, /licence/*)
 app.use(requireLicence)
