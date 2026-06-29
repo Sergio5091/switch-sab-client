@@ -183,8 +183,12 @@ export const startSession = async (req, res) => {
     const { getIO } = await import('../../socket.js')
     try { getIO().emit('session:start', { sessionId: session.id, posteId: posteLibre.id, clientId, finPrevue }) } catch (e) { /* socket pas dispo */ }
 
-    const { scheduleSessionEnd } = await import('../gerant/sessions.controller.js')
-    scheduleSessionEnd(session.id, posteLibre.id, duree.secondes * 1000)
+    try {
+      const { scheduleSessionEnd } = await import('../gerant/sessions.controller.js')
+      scheduleSessionEnd(session.id, posteLibre.id, duree.secondes * 1000)
+    } catch (e) {
+      console.warn('[startSession] scheduleSessionEnd non disponible:', e.message)
+    }
 
     return res.status(201).json({ message: 'Session démarrée', sessionId: session.id, finPrevue, modeAchat })
   } catch (err) {
