@@ -1,7 +1,7 @@
 import { useState, useEffect } from "react";
 import ClientLayout from "@/layouts/ClientLayout";
 import { Link } from "wouter";
-import { Gift, Clock, Play, Square, ChevronRight, Ticket, Wallet, Plus } from "lucide-react";
+import { Gift, Clock, Play, Square, ChevronRight, Ticket, Wallet, Plus, Sparkles } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "@/components/ui/dialog";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
@@ -43,12 +43,14 @@ export default function ClientHome() {
   const [durees, setDurees] = useState<Duree[]>([]);
   const [dureeId, setDureeId] = useState("");
   const [loading, setLoading] = useState(false);
+  const [useBonus, setUseBonus] = useState(false);
 
   // Prolongement de session
   const [openProlong, setOpenProlong] = useState(false);
   const [prolongDurees, setProlongDurees] = useState<Duree[]>([]);
   const [prolongDureeId, setProlongDureeId] = useState("");
   const [prolongLoading, setProlongLoading] = useState(false);
+  const [useBonusProlong, setUseBonusProlong] = useState(false);
 
   const reload = () => api.get('/client/home').then(r => setData(r.data)).catch(console.error);
 
@@ -87,14 +89,17 @@ export default function ClientHome() {
     if (!catId || !dureeId) return;
     setLoading(true);
     try {
-      await api.post('/client/session/start', { categorieId: Number(catId), dureeId: Number(dureeId) });
+      await api.post('/client/session/start', { categorieId: Number(catId), dureeId: Number(dureeId), useBonus });
       toast({ title: "Session démarrée !" });
       setOpenStart(false);
       setCatId(""); setDureeId("");
       reload();
     } catch (err: any) {
       toast({ title: err.response?.data?.message ?? "Erreur", variant: "destructive" });
-    } finally { setLoading(false); }
+    } finally {
+      setLoading(false);
+      setUseBonus(false);
+    }
   }
 
   async function handleStop() {
@@ -113,10 +118,11 @@ export default function ClientHome() {
     if (!data?.activeSession || !prolongDureeId) return;
     setProlongLoading(true);
     try {
-      await api.post(`/client/session/${data.activeSession.id}/prolonger`, { dureeId: Number(prolongDureeId) });
+      await api.post(`/client/session/${data.activeSession.id}/prolonger`, { dureeId: Number(prolongDureeId), useBonus: useBonusProlong });
       toast({ title: "Session prolongée ✅" });
       setOpenProlong(false);
       setProlongDureeId("");
+      setUseBonusProlong(false);
       reload();
     } catch (err: any) {
       toast({ title: err.response?.data?.message ?? "Erreur", variant: "destructive" });
@@ -129,6 +135,10 @@ export default function ClientHome() {
   const urgentColor = pct < 10 ? "text-destructive" : pct < 25 ? "text-yellow-400" : "text-green-400";
   const selectedDuree = durees.find(d => d.id === Number(dureeId));
   const creditCat = data?.credits.find(c => c.categorie.id === Number(catId));
+  const bonusDisponible = (data?.bonus?.disponible === true) && (data.bonus.solde > 0);
+  const bonusSuffisantStart = bonusDisponible && !!selectedDuree && (data!.bonus!.solde >= selectedDuree.secondes);
+  const selectedProlongDuree = prolongDurees.find(d => d.id === Number(prolongDureeId));
+  const bonusSuffisantProlong = bonusDisponible && !!selectedProlongDuree && (data!.bonus!.solde >= selectedProlongDuree.secondes);
 
   return (
     <ClientLayout>
@@ -251,7 +261,7 @@ export default function ClientHome() {
       </div>
 
       {/* Dialog prolonger session */}
-      <Dialog open={openProlong} onOpenChange={v => { if (!v) { setOpenProlong(false); setProlongDureeId(""); } }}>
+      <Dialog open={openProlong} onOpenChange={v => { if (!v) { setOpenProlong(false); setProlongDureeId(""); setUseBonusProlong(false); } }}>
         <DialogContent className="sm:max-w-sm">
           <DialogHeader><DialogTitle className="flex items-center gap-2"><Plus size={16} className="text-primary" />Prolonger la session</DialogTitle></DialogHeader>
           <div className="space-y-3">
@@ -267,6 +277,11 @@ export default function ClientHome() {
                   <Clock size={11} /> {c.categorie.nom} : {Math.floor(c.solde / 60)} min
                 </div>
               ))}
+              {bonusDisponible && (
+                <div className="flex items-center gap-1.5 text-orange-400 font-medium">
+                  <Sparkles size={11} /> Bonus : {Math.floor(data!.bonus!.solde / 60)} min offerts
+                </div>
+              )}
             </div>
 
             {/* Durées disponibles */}
@@ -276,9 +291,10 @@ export default function ClientHome() {
                   const creditCatProlong = data?.credits.find(c => c.categorie.id === d.categorieId);
                   const peutAvecMinutes = (creditCatProlong?.solde ?? 0) >= d.secondes;
                   const peutAvecSolde = (data?.soldeMonetaire ?? 0) >= d.prix;
-                  const disponible = peutAvecMinutes || peutAvecSolde;
+                  const peutAvecBonus = bonusDisponible && (data!.bonus!.solde >= d.secondes);
+                  const disponible = peutAvecMinutes || peutAvecSolde || peutAvecBonus;
                   return (
-                    <button key={d.id} onClick={() => disponible && setProlongDureeId(String(d.id))}
+                    <button key={d.id} onClick={() => { if (disponible) { setProlongDureeId(String(d.id)); setUseBonusProlong(false); } }}
                       disabled={!disponible}
                       className={`p-3 rounded-xl border text-sm transition-all ${prolongDureeId === String(d.id) ? "bg-primary/10 border-primary/40 text-primary" : disponible ? "bg-muted border-border hover:border-primary/30" : "opacity-40 cursor-not-allowed bg-muted border-border"}`}>
                       <div className="font-bold">{d.libelle}</div>
@@ -290,27 +306,61 @@ export default function ClientHome() {
             ) : (
               <p className="text-xs text-muted-foreground text-center py-2">Chargement des durées...</p>
             )}
+
+            {/* Toggle bonus — visible uniquement si bonus suffisant pour la durée sélectionnée */}
+            {bonusSuffisantProlong && (
+              <div className="rounded-xl border border-orange-500/30 bg-orange-500/5 p-3">
+                <p className="text-xs text-orange-400 font-medium mb-2 flex items-center gap-1.5">
+                  <Sparkles size={12} /> Vous avez assez de bonus pour cette durée
+                </p>
+                <div className="flex gap-2">
+                  <button
+                    onClick={() => setUseBonusProlong(false)}
+                    className={cn(
+                      "flex-1 py-2 px-3 rounded-lg border text-xs font-medium transition-all",
+                      !useBonusProlong ? "bg-primary/10 border-primary/40 text-primary" : "bg-muted border-border text-muted-foreground hover:border-primary/20"
+                    )}
+                  >
+                    <Wallet size={11} className="inline mr-1" /> Crédit / Solde
+                  </button>
+                  <button
+                    onClick={() => setUseBonusProlong(true)}
+                    className={cn(
+                      "flex-1 py-2 px-3 rounded-lg border text-xs font-medium transition-all",
+                      useBonusProlong ? "bg-orange-500/10 border-orange-500/40 text-orange-400" : "bg-muted border-border text-muted-foreground hover:border-orange-500/20"
+                    )}
+                  >
+                    <Sparkles size={11} className="inline mr-1" /> Utiliser mes bonus
+                  </button>
+                </div>
+              </div>
+            )}
           </div>
           <DialogFooter>
-            <Button variant="ghost" onClick={() => setOpenProlong(false)}>Annuler</Button>
-            <Button onClick={handleProlong} disabled={prolongLoading || !prolongDureeId}>
-              <Plus size={14} className="mr-1.5" /> {prolongLoading ? "En cours..." : "Prolonger"}
+            <Button variant="ghost" onClick={() => { setOpenProlong(false); setUseBonusProlong(false); }}>Annuler</Button>
+            <Button
+              onClick={handleProlong}
+              disabled={prolongLoading || !prolongDureeId}
+              className={useBonusProlong ? "bg-orange-500 hover:bg-orange-600 text-white" : ""}
+            >
+              {useBonusProlong ? <Sparkles size={14} className="mr-1.5" /> : <Plus size={14} className="mr-1.5" />}
+              {prolongLoading ? "En cours..." : "Prolonger"}
             </Button>
           </DialogFooter>
         </DialogContent>
       </Dialog>
 
       {/* Dialog démarrer session */}
-      <Dialog open={openStart} onOpenChange={v => { if (!v) { setOpenStart(false); setCatId(""); setDureeId(""); } }}>
+      <Dialog open={openStart} onOpenChange={v => { if (!v) { setOpenStart(false); setCatId(""); setDureeId(""); setUseBonus(false); } }}>
         <DialogContent className="sm:max-w-sm">
           <DialogHeader><DialogTitle>Démarrer une session</DialogTitle></DialogHeader>
           <div className="space-y-3">
-            <Select value={catId} onValueChange={setCatId}>
+            <Select value={catId} onValueChange={v => { setCatId(v); setDureeId(""); setUseBonus(false); }}>
               <SelectTrigger><SelectValue placeholder="Choisir une catégorie" /></SelectTrigger>
               <SelectContent>{categories.map(c => <SelectItem key={c.id} value={String(c.id)}>{c.nom}</SelectItem>)}</SelectContent>
             </Select>
             {catId && (
-              <Select value={dureeId} onValueChange={setDureeId}>
+              <Select value={dureeId} onValueChange={v => { setDureeId(v); setUseBonus(false); }}>
                 <SelectTrigger><SelectValue placeholder="Choisir une durée" /></SelectTrigger>
                 <SelectContent>{durees.map(d => <SelectItem key={d.id} value={String(d.id)}>{d.libelle} — {d.prix.toLocaleString()} F</SelectItem>)}</SelectContent>
               </Select>
@@ -335,6 +385,40 @@ export default function ClientHome() {
                     )}
                   </div>
                 )}
+                {bonusDisponible && (
+                  <div className="text-orange-400 font-medium flex items-center gap-1">
+                    <Sparkles size={10} /> Bonus : {Math.floor(data!.bonus!.solde / 60)} min offerts
+                  </div>
+                )}
+              </div>
+            )}
+
+            {/* Toggle bonus — visible uniquement si bonus suffisant pour la durée sélectionnée */}
+            {bonusSuffisantStart && (
+              <div className="rounded-xl border border-orange-500/30 bg-orange-500/5 p-3">
+                <p className="text-xs text-orange-400 font-medium mb-2 flex items-center gap-1.5">
+                  <Sparkles size={12} /> Vous avez assez de bonus pour cette durée
+                </p>
+                <div className="flex gap-2">
+                  <button
+                    onClick={() => setUseBonus(false)}
+                    className={cn(
+                      "flex-1 py-2 px-3 rounded-lg border text-xs font-medium transition-all",
+                      !useBonus ? "bg-primary/10 border-primary/40 text-primary" : "bg-muted border-border text-muted-foreground hover:border-primary/20"
+                    )}
+                  >
+                    <Wallet size={11} className="inline mr-1" /> Crédit / Solde
+                  </button>
+                  <button
+                    onClick={() => setUseBonus(true)}
+                    className={cn(
+                      "flex-1 py-2 px-3 rounded-lg border text-xs font-medium transition-all",
+                      useBonus ? "bg-orange-500/10 border-orange-500/40 text-orange-400" : "bg-muted border-border text-muted-foreground hover:border-orange-500/20"
+                    )}
+                  >
+                    <Sparkles size={11} className="inline mr-1" /> Utiliser mes bonus
+                  </button>
+                </div>
               </div>
             )}
           </div>
@@ -343,12 +427,15 @@ export default function ClientHome() {
               onClick={handleStart}
               disabled={
                 !catId || !dureeId || loading ||
-                (!!selectedDuree && (creditCat?.solde ?? 0) < selectedDuree.secondes && (data?.soldeMonetaire ?? 0) < selectedDuree.prix)
+                (!useBonus && !!selectedDuree && (creditCat?.solde ?? 0) < selectedDuree.secondes && (data?.soldeMonetaire ?? 0) < selectedDuree.prix)
               }
+              className={useBonus ? "bg-orange-500 hover:bg-orange-600 text-white" : ""}
             >
-              <Play size={14} className="mr-1.5" /> Démarrer
+              {useBonus ? <Sparkles size={14} className="mr-1.5" /> : <Play size={14} className="mr-1.5" />}
+              Démarrer
             </Button>
-          </DialogFooter>        </DialogContent>
+          </DialogFooter>
+        </DialogContent>
       </Dialog>
     </ClientLayout>
   );

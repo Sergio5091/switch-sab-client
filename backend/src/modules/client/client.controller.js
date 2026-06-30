@@ -103,7 +103,7 @@ export const getLeaderboard = async (req, res) => {
 
 export const startSession = async (req, res) => {
   const clientId = req.user.id
-  const { categorieId, dureeId } = req.body
+  const { categorieId, dureeId, useBonus } = req.body
   if (!categorieId || !dureeId) return res.status(400).json({ message: 'categorieId et dureeId requis' })
 
   try {
@@ -113,14 +113,56 @@ export const startSession = async (req, res) => {
     const posteLibre = await prisma.poste.findFirst({ where: { categorieId: Number(categorieId), statut: 'LIBRE' } })
     if (!posteLibre) return res.status(400).json({ message: 'Aucun poste libre dans cette catégorie' })
 
-    // Vérifier crédit en secondes
+    // ── Mode bonus choisi explicitement par le client ──
+    if (useBonus) {
+      const bonus = await prisma.bonus.findUnique({ where: { clientId } })
+      if (!bonus || !bonus.disponible || bonus.solde < duree.secondes) {
+        return res.status(400).json({ message: 'Bonus indisponible ou insuffisant' })
+      }
+
+      const finPrevue = new Date(Date.now() + duree.secondes * 1000)
+
+      const session = await prisma.$transaction(async (tx) => {
+        await tx.bonus.update({
+          where: { id: bonus.id },
+          data: { solde: { decrement: duree.secondes } }
+        })
+        const s = await tx.session.create({
+          data: {
+            clientId,
+            gerantId: clientId,
+            posteId: posteLibre.id,
+            dureeId: Number(dureeId),
+            tempsRestant: duree.secondes,
+            fin: finPrevue,
+            statut: 'ACTIVE',
+            estBonus: true
+          }
+        })
+        await tx.poste.update({ where: { id: posteLibre.id }, data: { statut: 'OCCUPE' } })
+        return s
+      })
+
+      const { getIO } = await import('../../socket.js')
+      try { getIO().emit('session:start', { sessionId: session.id, posteId: posteLibre.id, clientId, finPrevue, estBonus: true }) } catch (e) {}
+
+      try {
+        const { scheduleSessionEnd } = await import('../gerant/sessions.controller.js')
+        scheduleSessionEnd(session.id, posteLibre.id, duree.secondes * 1000)
+      } catch (e) {
+        console.warn('[startSession] scheduleSessionEnd non disponible:', e.message)
+      }
+
+      return res.status(201).json({ message: 'Session démarrée avec vos bonus', sessionId: session.id, finPrevue, modeBonus: true })
+    }
+
+    // ── Mode normal : crédit en secondes ou solde monétaire ──
     const credit = await prisma.credit.findFirst({ where: { clientId, categorieId: Number(categorieId) } })
     const soldeSecondes = credit?.solde ?? 0
 
-    let modeAchat = false // true = on débite le solde monétaire au lieu des secondes
+    let modeAchat = false
 
     if (soldeSecondes < duree.secondes) {
-      // Pas assez de secondes → vérifier si le client a assez en solde monétaire
       const user = await prisma.user.findUnique({
         where: { id: clientId },
         select: {
@@ -131,8 +173,6 @@ export const startSession = async (req, res) => {
         }
       })
       const totalEncaisse = (user?.transactions ?? []).reduce((s, t) => s + t.montant, 0)
-
-      // Calculer montant déjà dépensé en sessions
       const depenses = await prisma.transaction.aggregate({
         where: { clientId, type: 'SESSION' },
         _sum: { montant: true }
@@ -152,18 +192,15 @@ export const startSession = async (req, res) => {
 
     const session = await prisma.$transaction(async (tx) => {
       if (modeAchat) {
-        // Débiter monétairement : créer une transaction SESSION
         await tx.transaction.create({
           data: { clientId, montant: duree.prix, type: 'SESSION' }
         })
-        // Créditer puis débiter les secondes (net = 0, juste pour la cohérence)
         await tx.credit.upsert({
           where: { clientId_categorieId: { clientId, categorieId: Number(categorieId) } },
           create: { clientId, categorieId: Number(categorieId), solde: 0 },
-          update: {} // solde reste 0, on passe directement en session
+          update: {}
         })
       } else {
-        // Débiter les secondes
         await tx.credit.update({
           where: { id: credit.id },
           data: { solde: { decrement: duree.secondes } }
@@ -187,7 +224,7 @@ export const startSession = async (req, res) => {
     })
 
     const { getIO } = await import('../../socket.js')
-    try { getIO().emit('session:start', { sessionId: session.id, posteId: posteLibre.id, clientId, finPrevue }) } catch (e) { /* socket pas dispo */ }
+    try { getIO().emit('session:start', { sessionId: session.id, posteId: posteLibre.id, clientId, finPrevue }) } catch (e) {}
 
     try {
       const { scheduleSessionEnd } = await import('../gerant/sessions.controller.js')
@@ -281,12 +318,12 @@ export const getCategorieSession = async (req, res) => {
 }
 
 // ─── POST /client/session/:id/prolonger ──────────────────────────────────────
-// Le client prolonge sa propre session avec ses minutes ou son solde monétaire
+// Le client prolonge sa propre session avec ses minutes, son solde monétaire ou ses bonus
 
 export const prolongerSession = async (req, res) => {
   const clientId = req.user.id
   const sessionId = Number(req.params.id)
-  const { dureeId } = req.body
+  const { dureeId, useBonus } = req.body
 
   if (!dureeId) return res.status(400).json({ message: 'dureeId requis' })
 
@@ -302,7 +339,43 @@ export const prolongerSession = async (req, res) => {
     })
     if (!duree) return res.status(404).json({ message: 'Durée introuvable pour cette catégorie' })
 
-    // Vérifier la source de crédit disponible
+    const tempsRestantActuel = Math.max(0, Math.floor((new Date(session.fin).getTime() - Date.now()) / 1000))
+    const nouvelleFin = new Date(Date.now() + (tempsRestantActuel + duree.secondes) * 1000)
+
+    // ── Mode bonus choisi explicitement par le client ──
+    if (useBonus) {
+      const bonus = await prisma.bonus.findUnique({ where: { clientId } })
+      if (!bonus || !bonus.disponible || bonus.solde < duree.secondes) {
+        return res.status(400).json({ message: 'Bonus indisponible ou insuffisant' })
+      }
+
+      await prisma.$transaction(async (tx) => {
+        await tx.bonus.update({
+          where: { id: bonus.id },
+          data: { solde: { decrement: duree.secondes } }
+        })
+        await tx.session.update({
+          where: { id: sessionId },
+          data: { fin: nouvelleFin, tempsRestant: tempsRestantActuel + duree.secondes }
+        })
+      })
+
+      try {
+        const { scheduleSessionEnd, getSessionTimeouts } = await import('../gerant/sessions.controller.js')
+        const timeouts = getSessionTimeouts()
+        if (timeouts[sessionId]) { clearTimeout(timeouts[sessionId]); delete timeouts[sessionId] }
+        scheduleSessionEnd(sessionId, session.poste.id, (tempsRestantActuel + duree.secondes) * 1000)
+      } catch (e) {
+        console.warn('[prolongerSession] scheduleSessionEnd non disponible:', e.message)
+      }
+
+      const { getIO } = await import('../../socket.js')
+      try { getIO().emit('session:prolonged', { sessionId, posteId: session.poste.id, nouvelleFin }) } catch (e) {}
+
+      return res.json({ message: `Session prolongée de ${duree.libelle} avec vos bonus`, nouvelleFin, tempsRestant: tempsRestantActuel + duree.secondes, modeBonus: true })
+    }
+
+    // ── Mode normal : crédit en secondes ou solde monétaire ──
     const credit = await prisma.credit.findFirst({
       where: { clientId, categorieId: session.poste.categorieId }
     })
@@ -311,7 +384,6 @@ export const prolongerSession = async (req, res) => {
     let modeAchat = false
 
     if (soldeSecondes < duree.secondes) {
-      // Pas assez de minutes → vérifier solde monétaire
       const user = await prisma.user.findUnique({
         where: { id: clientId },
         select: { transactions: { where: { type: { in: ['RECHARGE_GERANT', 'RECHARGE_COUPON', 'BONUS'] } }, select: { montant: true } } }
@@ -332,10 +404,6 @@ export const prolongerSession = async (req, res) => {
       }
     }
 
-    // Calculer la nouvelle fin
-    const tempsRestantActuel = Math.max(0, Math.floor((new Date(session.fin).getTime() - Date.now()) / 1000))
-    const nouvelleFin = new Date(Date.now() + (tempsRestantActuel + duree.secondes) * 1000)
-
     await prisma.$transaction(async (tx) => {
       if (modeAchat) {
         await tx.transaction.create({ data: { clientId, montant: duree.prix, type: 'SESSION' } })
@@ -351,7 +419,6 @@ export const prolongerSession = async (req, res) => {
       })
     })
 
-    // Relancer le timer de fin automatique
     try {
       const { scheduleSessionEnd, getSessionTimeouts } = await import('../gerant/sessions.controller.js')
       const timeouts = getSessionTimeouts()
