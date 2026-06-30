@@ -1,7 +1,7 @@
 import { useState, useEffect } from "react";
 import ClientLayout from "@/layouts/ClientLayout";
 import { Link } from "wouter";
-import { DollarSign, Gift, Clock, Play, Square, ChevronRight, Ticket, Wallet } from "lucide-react";
+import { Gift, Clock, Play, Square, ChevronRight, Ticket, Wallet, Plus } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "@/components/ui/dialog";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
@@ -21,7 +21,7 @@ function getTempsRestant(fin: string) {
 }
 
 interface Credit { solde: number; categorie: { id: number; nom: string } }
-interface ActiveSession { id: number; fin: string; estBonus: boolean; duree: { libelle: string; secondes: number } }
+interface ActiveSession { id: number; fin: string; estBonus: boolean; posteId: number; dureeId: number; duree: { libelle: string; secondes: number; categorieId?: number } }
 interface RecentSession { id: number; debut: string; estBonus: boolean; duree: { libelle: string; prix: number }; poste: { nom: string } }
 interface HomeData {
   pseudo: string;
@@ -31,7 +31,7 @@ interface HomeData {
   activeSession: ActiveSession | null;
   recentSessions: RecentSession[];
 }
-interface Duree { id: number; libelle: string; secondes: number; prix: number }
+interface Duree { id: number; libelle: string; secondes: number; prix: number; categorieId?: number }
 
 export default function ClientHome() {
   const { toast } = useToast();
@@ -43,6 +43,12 @@ export default function ClientHome() {
   const [durees, setDurees] = useState<Duree[]>([]);
   const [dureeId, setDureeId] = useState("");
   const [loading, setLoading] = useState(false);
+
+  // Prolongement de session
+  const [openProlong, setOpenProlong] = useState(false);
+  const [prolongDurees, setProlongDurees] = useState<Duree[]>([]);
+  const [prolongDureeId, setProlongDureeId] = useState("");
+  const [prolongLoading, setProlongLoading] = useState(false);
 
   const reload = () => api.get('/client/home').then(r => setData(r.data)).catch(console.error);
 
@@ -59,6 +65,23 @@ export default function ClientHome() {
     setDureeId("");
     api.get(`/client/categories/${catId}/durees`).then(r => setDurees(r.data)).catch(console.error);
   }, [catId]);
+
+  // Charger les durées de la catégorie de la session active pour le prolongement
+  useEffect(() => {
+    if (!openProlong || !data?.activeSession) return;
+    const session = data.activeSession;
+    // On récupère la catégorie via le poste de la session — on passe par l'API
+    api.get(`/client/session/${session.id}/categorie`)
+      .then(r => api.get(`/client/categories/${r.data.categorieId}/durees`))
+      .then(r => setProlongDurees(r.data))
+      .catch(() => {
+        // Fallback : charger toutes les catégories et prendre la première
+        api.get('/client/categories').then(r => {
+          if (r.data.length > 0) api.get(`/client/categories/${r.data[0].id}/durees`).then(d => setProlongDurees(d.data));
+        });
+      });
+    setProlongDureeId("");
+  }, [openProlong]);
 
   async function handleStart() {
     if (!catId || !dureeId) return;
@@ -84,6 +107,20 @@ export default function ClientHome() {
     } catch (err: any) {
       toast({ title: err.response?.data?.message ?? "Erreur", variant: "destructive" });
     } finally { setLoading(false); }
+  }
+
+  async function handleProlong() {
+    if (!data?.activeSession || !prolongDureeId) return;
+    setProlongLoading(true);
+    try {
+      await api.post(`/client/session/${data.activeSession.id}/prolonger`, { dureeId: Number(prolongDureeId) });
+      toast({ title: "Session prolongée ✅" });
+      setOpenProlong(false);
+      setProlongDureeId("");
+      reload();
+    } catch (err: any) {
+      toast({ title: err.response?.data?.message ?? "Erreur", variant: "destructive" });
+    } finally { setProlongLoading(false); }
   }
 
   const activeSession = data?.activeSession ?? null;
@@ -148,9 +185,14 @@ export default function ClientHome() {
             <div className="h-2 bg-muted rounded-full overflow-hidden mb-3">
               <div className={cn("h-full rounded-full transition-all", pct < 10 ? "bg-destructive" : pct < 25 ? "bg-yellow-400" : "bg-green-400")} style={{ width: `${pct}%` }} />
             </div>
-            <Button size="sm" variant="destructive" className="w-full gap-1.5" onClick={handleStop} disabled={loading}>
-              <Square size={13} /> Arrêter la session
-            </Button>
+            <div className="flex gap-2">
+              <Button size="sm" variant="outline" className="flex-1 gap-1.5 border-primary/30 text-primary hover:bg-primary/10" onClick={() => setOpenProlong(true)} disabled={loading}>
+                <Plus size={13} /> Prolonger
+              </Button>
+              <Button size="sm" variant="destructive" className="flex-1 gap-1.5" onClick={handleStop} disabled={loading}>
+                <Square size={13} /> Arrêter
+              </Button>
+            </div>
           </div>
         ) : (
           <div className="bg-card border border-border rounded-2xl p-5 text-center space-y-3">
@@ -207,6 +249,56 @@ export default function ClientHome() {
           </div>
         )}
       </div>
+
+      {/* Dialog prolonger session */}
+      <Dialog open={openProlong} onOpenChange={v => { if (!v) { setOpenProlong(false); setProlongDureeId(""); } }}>
+        <DialogContent className="sm:max-w-sm">
+          <DialogHeader><DialogTitle className="flex items-center gap-2"><Plus size={16} className="text-primary" />Prolonger la session</DialogTitle></DialogHeader>
+          <div className="space-y-3">
+            {/* Soldes disponibles */}
+            <div className="bg-muted/30 rounded-lg px-3 py-2.5 space-y-1 text-xs">
+              {(data?.soldeMonetaire ?? 0) > 0 && (
+                <div className="flex items-center gap-1.5 text-primary font-medium">
+                  <Wallet size={11} /> Solde : {(data?.soldeMonetaire ?? 0).toLocaleString()} F
+                </div>
+              )}
+              {data?.credits.filter(c => c.solde > 0).map(c => (
+                <div key={c.categorie.id} className="flex items-center gap-1.5 text-muted-foreground">
+                  <Clock size={11} /> {c.categorie.nom} : {Math.floor(c.solde / 60)} min
+                </div>
+              ))}
+            </div>
+
+            {/* Durées disponibles */}
+            {prolongDurees.length > 0 ? (
+              <div className="grid grid-cols-3 gap-2">
+                {prolongDurees.sort((a, b) => a.secondes - b.secondes).map(d => {
+                  const creditCatProlong = data?.credits.find(c => c.categorie.id === d.categorieId);
+                  const peutAvecMinutes = (creditCatProlong?.solde ?? 0) >= d.secondes;
+                  const peutAvecSolde = (data?.soldeMonetaire ?? 0) >= d.prix;
+                  const disponible = peutAvecMinutes || peutAvecSolde;
+                  return (
+                    <button key={d.id} onClick={() => disponible && setProlongDureeId(String(d.id))}
+                      disabled={!disponible}
+                      className={`p-3 rounded-xl border text-sm transition-all ${prolongDureeId === String(d.id) ? "bg-primary/10 border-primary/40 text-primary" : disponible ? "bg-muted border-border hover:border-primary/30" : "opacity-40 cursor-not-allowed bg-muted border-border"}`}>
+                      <div className="font-bold">{d.libelle}</div>
+                      <div className="text-xs mt-0.5 opacity-70">{d.prix.toLocaleString()} F</div>
+                    </button>
+                  );
+                })}
+              </div>
+            ) : (
+              <p className="text-xs text-muted-foreground text-center py-2">Chargement des durées...</p>
+            )}
+          </div>
+          <DialogFooter>
+            <Button variant="ghost" onClick={() => setOpenProlong(false)}>Annuler</Button>
+            <Button onClick={handleProlong} disabled={prolongLoading || !prolongDureeId}>
+              <Plus size={14} className="mr-1.5" /> {prolongLoading ? "En cours..." : "Prolonger"}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
 
       {/* Dialog démarrer session */}
       <Dialog open={openStart} onOpenChange={v => { if (!v) { setOpenStart(false); setCatId(""); setDureeId(""); } }}>

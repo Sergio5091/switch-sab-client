@@ -260,3 +260,113 @@ export const utiliserCoupon = async (req, res) => {
     return res.status(500).json({ message: 'Erreur serveur' })
   }
 }
+
+// ─── GET /client/session/:id/categorie ───────────────────────────────────────
+// Retourne la categorieId du poste de la session (pour charger les durées côté front)
+
+export const getCategorieSession = async (req, res) => {
+  const clientId = req.user.id
+  const sessionId = Number(req.params.id)
+  try {
+    const session = await prisma.session.findFirst({
+      where: { id: sessionId, clientId, statut: 'ACTIVE' },
+      include: { poste: { select: { categorieId: true, categorie: { select: { id: true, nom: true } } } } }
+    })
+    if (!session) return res.status(404).json({ message: 'Session active introuvable' })
+    return res.json({ categorieId: session.poste.categorieId, categorie: session.poste.categorie })
+  } catch (err) {
+    console.error('[client/session/:id/categorie GET]', err)
+    return res.status(500).json({ message: 'Erreur serveur' })
+  }
+}
+
+// ─── POST /client/session/:id/prolonger ──────────────────────────────────────
+// Le client prolonge sa propre session avec ses minutes ou son solde monétaire
+
+export const prolongerSession = async (req, res) => {
+  const clientId = req.user.id
+  const sessionId = Number(req.params.id)
+  const { dureeId } = req.body
+
+  if (!dureeId) return res.status(400).json({ message: 'dureeId requis' })
+
+  try {
+    const session = await prisma.session.findFirst({
+      where: { id: sessionId, clientId, statut: 'ACTIVE' },
+      include: { poste: true }
+    })
+    if (!session) return res.status(404).json({ message: 'Session active introuvable' })
+
+    const duree = await prisma.duree.findFirst({
+      where: { id: Number(dureeId), categorieId: session.poste.categorieId }
+    })
+    if (!duree) return res.status(404).json({ message: 'Durée introuvable pour cette catégorie' })
+
+    // Vérifier la source de crédit disponible
+    const credit = await prisma.credit.findFirst({
+      where: { clientId, categorieId: session.poste.categorieId }
+    })
+    const soldeSecondes = credit?.solde ?? 0
+
+    let modeAchat = false
+
+    if (soldeSecondes < duree.secondes) {
+      // Pas assez de minutes → vérifier solde monétaire
+      const user = await prisma.user.findUnique({
+        where: { id: clientId },
+        select: { transactions: { where: { type: { in: ['RECHARGE_GERANT', 'RECHARGE_COUPON', 'BONUS'] } }, select: { montant: true } } }
+      })
+      const totalEncaisse = (user?.transactions ?? []).reduce((s, t) => s + t.montant, 0)
+      const depenses = await prisma.transaction.aggregate({
+        where: { clientId, type: 'SESSION' },
+        _sum: { montant: true }
+      })
+      const soldeMonetaire = totalEncaisse - (depenses._sum.montant ?? 0)
+
+      if (soldeMonetaire >= duree.prix) {
+        modeAchat = true
+      } else {
+        return res.status(400).json({
+          message: `Crédit insuffisant. Disponible : ${Math.floor(soldeSecondes / 60)} min ou ${soldeMonetaire.toLocaleString()} F (requis : ${duree.prix.toLocaleString()} F)`
+        })
+      }
+    }
+
+    // Calculer la nouvelle fin
+    const tempsRestantActuel = Math.max(0, Math.floor((new Date(session.fin).getTime() - Date.now()) / 1000))
+    const nouvelleFin = new Date(Date.now() + (tempsRestantActuel + duree.secondes) * 1000)
+
+    await prisma.$transaction(async (tx) => {
+      if (modeAchat) {
+        await tx.transaction.create({ data: { clientId, montant: duree.prix, type: 'SESSION' } })
+      } else {
+        await tx.credit.update({
+          where: { id: credit.id },
+          data: { solde: { decrement: duree.secondes } }
+        })
+      }
+      await tx.session.update({
+        where: { id: sessionId },
+        data: { fin: nouvelleFin, tempsRestant: tempsRestantActuel + duree.secondes }
+      })
+    })
+
+    // Relancer le timer de fin automatique
+    try {
+      const { scheduleSessionEnd, getSessionTimeouts } = await import('../gerant/sessions.controller.js')
+      const timeouts = getSessionTimeouts()
+      if (timeouts[sessionId]) { clearTimeout(timeouts[sessionId]); delete timeouts[sessionId] }
+      scheduleSessionEnd(sessionId, session.poste.id, (tempsRestantActuel + duree.secondes) * 1000)
+    } catch (e) {
+      console.warn('[prolongerSession] scheduleSessionEnd non disponible:', e.message)
+    }
+
+    const { getIO } = await import('../../socket.js')
+    try { getIO().emit('session:prolonged', { sessionId, posteId: session.poste.id, nouvelleFin }) } catch (e) {}
+
+    return res.json({ message: `Session prolongée de ${duree.libelle}`, nouvelleFin, tempsRestant: tempsRestantActuel + duree.secondes, modeAchat })
+  } catch (err) {
+    console.error('[client/session/:id/prolonger POST]', err)
+    return res.status(500).json({ message: 'Erreur serveur' })
+  }
+}
