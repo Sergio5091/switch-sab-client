@@ -24,13 +24,22 @@ interface Session {
   duree: { id: number; libelle: string; secondes: number; prix: number };
 }
 
+interface Recharge {
+  id: number;
+  montant: number;
+  date: string;
+  client: { id: number; pseudo: string; telephone: string };
+}
+
 interface Gerant { id: number; nom?: string; prenom?: string }
 interface Poste  { id: number; nom: string }
 
 export default function AdminRapports() {
   const { toast } = useToast();
   const [sessions, setSessions] = useState<Session[]>([]);
+  const [recharges, setRecharges] = useState<Recharge[]>([]);
   const [total, setTotal] = useState(0);
+  const [totalSessions, setTotalSessions] = useState(0);
   const [gerants, setGerants] = useState<Gerant[]>([]);
   const [postes, setPostes] = useState<Poste[]>([]);
   const [loading, setLoading] = useState(false);
@@ -47,7 +56,9 @@ export default function AdminRapports() {
       setGerants(res.data.gerants ?? []);
       setPostes(res.data.postes ?? []);
       setSessions(res.data.sessions ?? []);
+      setRecharges(res.data.recharges ?? []);
       setTotal(res.data.total ?? 0);
+      setTotalSessions(res.data.totalSessions ?? 0);
     }).catch(() => toast({ title: "Erreur chargement rapports", variant: "destructive" }));
   }, []);
 
@@ -62,8 +73,9 @@ export default function AdminRapports() {
     try {
       const res = await api.get(`/rapports?${params.toString()}`);
       setSessions(res.data.sessions ?? []);
+      setRecharges(res.data.recharges ?? []);
       setTotal(res.data.total ?? 0);
-      // Mettre à jour les listes filtres seulement si elles arrivent non vides
+      setTotalSessions(res.data.totalSessions ?? 0);
       if (res.data.gerants?.length) setGerants(res.data.gerants);
       if (res.data.postes?.length)  setPostes(res.data.postes);
     } catch (err: any) {
@@ -113,7 +125,11 @@ export default function AdminRapports() {
         <div className="flex items-center justify-between flex-wrap gap-3">
           <div>
             <h1 className="text-xl font-bold text-foreground">Rapports</h1>
-            <p className="text-sm text-muted-foreground mt-0.5">{sessions.length} session(s) · {total.toLocaleString()} F</p>
+            <p className="text-sm text-muted-foreground mt-0.5">
+              {recharges.length} recharge(s) · <span className="text-green-400 font-semibold">{total.toLocaleString()} F encaissés</span>
+              <span className="mx-1">·</span>
+              {sessions.length} session(s)
+            </p>
           </div>
           <Button variant="outline" onClick={handleExport} className="gap-1.5" data-testid="button-export-csv">
             <Download size={15} /> Exporter CSV
@@ -169,13 +185,17 @@ export default function AdminRapports() {
           )}
         </div>
 
-        {/* Table */}
+        {/* Table Sessions */}
         <div className="bg-card border border-border rounded-xl overflow-hidden">
+          <div className="px-5 py-4 border-b border-border flex items-center gap-2">
+            <h2 className="text-sm font-semibold text-foreground">Sessions ({sessions.length})</h2>
+            <span className="ml-auto text-xs text-muted-foreground">Indicateur d'activité — non financier</span>
+          </div>
           <div className="overflow-x-auto">
             <table className="w-full text-sm">
               <thead>
                 <tr className="border-b border-border bg-muted/30">
-                  {["Client", "Début", "Durée", "Montant", "Poste", "Gérant", "Type"].map(h => (
+                  {["Client", "Début", "Durée", "Poste", "Gérant", "Statut", "Type"].map(h => (
                     <th key={h} className="text-left px-4 py-2.5 text-xs text-muted-foreground font-medium whitespace-nowrap">{h}</th>
                   ))}
                 </tr>
@@ -192,9 +212,17 @@ export default function AdminRapports() {
                       {format(new Date(s.debut), "dd MMM · HH:mm", { locale: fr })}
                     </td>
                     <td className="px-4 py-3 text-xs">{s.duree.libelle}</td>
-                    <td className="px-4 py-3 font-semibold text-primary">{s.duree.prix.toLocaleString()} F</td>
                     <td className="px-4 py-3 text-xs">{s.poste.nom}</td>
                     <td className="px-4 py-3 text-xs text-muted-foreground">{s.gerant.prenom} {s.gerant.nom}</td>
+                    <td className="px-4 py-3">
+                      <Badge className={cn("text-xs",
+                        s.statut === "ACTIVE"   ? "bg-green-500/10 text-green-400" :
+                        s.statut === "ARRETEE"  ? "bg-yellow-500/10 text-yellow-400" :
+                        "bg-muted text-muted-foreground"
+                      )}>
+                        {s.statut === "ACTIVE" ? "En cours" : s.statut === "ARRETEE" ? "En pause" : "Terminée"}
+                      </Badge>
+                    </td>
                     <td className="px-4 py-3">
                       {s.estBonus
                         ? <Badge className="bg-primary/10 text-primary border-primary/20 text-xs gap-1"><Gift size={9} /> Bonus</Badge>
@@ -204,11 +232,45 @@ export default function AdminRapports() {
                   </tr>
                 ))}
               </tbody>
+            </table>
+          </div>
+        </div>
+
+        {/* Table Recharges */}
+        <div className="bg-card border border-border rounded-xl overflow-hidden">
+          <div className="px-5 py-4 border-b border-border flex items-center gap-2">
+            <h2 className="text-sm font-semibold text-foreground">Recharges ({recharges.length})</h2>
+            <span className="ml-auto text-sm font-bold text-green-400">{total.toLocaleString()} F encaissés</span>
+          </div>
+          <div className="overflow-x-auto">
+            <table className="w-full text-sm">
+              <thead>
+                <tr className="border-b border-border bg-muted/30">
+                  {["Client", "Téléphone", "Date", "Montant"].map(h => (
+                    <th key={h} className="text-left px-4 py-2.5 text-xs text-muted-foreground font-medium whitespace-nowrap">{h}</th>
+                  ))}
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-border">
+                {loading ? (
+                  <tr><td colSpan={4} className="px-4 py-8 text-center text-muted-foreground text-sm">Chargement…</td></tr>
+                ) : recharges.length === 0 ? (
+                  <tr><td colSpan={4} className="px-4 py-8 text-center text-muted-foreground text-sm">Aucune recharge trouvée</td></tr>
+                ) : recharges.map(r => (
+                  <tr key={r.id} className="hover:bg-muted/20 transition-colors">
+                    <td className="px-4 py-3 font-medium text-foreground">{r.client.pseudo}</td>
+                    <td className="px-4 py-3 text-xs text-muted-foreground">{r.client.telephone}</td>
+                    <td className="px-4 py-3 text-xs text-muted-foreground whitespace-nowrap">
+                      {format(new Date(r.date), "dd MMM · HH:mm", { locale: fr })}
+                    </td>
+                    <td className="px-4 py-3 font-bold text-green-400">+{r.montant.toLocaleString()} F</td>
+                  </tr>
+                ))}
+              </tbody>
               <tfoot>
                 <tr className="border-t-2 border-border bg-muted/20">
-                  <td colSpan={3} className="px-4 py-3 text-xs font-semibold text-muted-foreground">TOTAL</td>
-                  <td className="px-4 py-3 text-base font-bold text-primary">{total.toLocaleString()} F</td>
-                  <td colSpan={3} />
+                  <td colSpan={3} className="px-4 py-3 text-xs font-semibold text-muted-foreground">TOTAL ENCAISSÉ</td>
+                  <td className="px-4 py-3 text-base font-bold text-green-400">{total.toLocaleString()} F</td>
                 </tr>
               </tfoot>
             </table>

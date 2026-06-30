@@ -1,7 +1,7 @@
 import { useState, useEffect } from "react";
 import AdminLayout from "@/layouts/AdminLayout";
 import { Button } from "@/components/ui/button";
-import { Download, DollarSign, Clock, Users, Gift, Zap, TrendingUp } from "lucide-react";
+import { Download, DollarSign, Clock, Users, Gift, Zap, TrendingUp, PauseCircle, CheckCircle2 } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
 import { format } from "date-fns";
 import { fr } from "date-fns/locale";
@@ -36,16 +36,19 @@ interface Rapport {
   date: string;
   gerant: string;
   resume: {
+    revenuJour: number;
+    nbRecharges: number;
     totalSessions: number;
-    totalMontantSessions: number;
-    totalMontantRecharges: number;
-    totalMontantJour: number;
-    totalSecondes: string;
-    sessionNormale: number;
-    sessionBonus: number;
+    sessionsTerminees: number;
+    sessionsEnPause: number;
+    sessionsActives: number;
+    sessionsBonus: number;
+    sessionsNormales: number;
+    tempsConsomme: string;
+    tempsEnPause: string;
   };
-  parCategorie: Record<string, { nombre: number; montant: number; secondes: number }>;
-  parClient: Record<string, { nombre: number; montant: number; telephone: string; estEnfant: boolean }>;
+  parCategorie: Record<string, { nombre: number; terminees: number; enPause: number; actives: number; tempsConsommeMin: number }>;
+  parClient: Record<string, { nbSessions: number; telephone: string; estEnfant: boolean }>;
   sessions: SessionRapport[];
   recharges: RechargeRapport[];
 }
@@ -80,14 +83,15 @@ export default function GerantRapport() {
   function handleExport() {
     if (!rapport) return;
     const sessionRows = rapport.sessions.map(s =>
-      `SESSION,${s.client},${format(new Date(s.debut), "HH:mm")},${s.fin ? format(new Date(s.fin), "HH:mm") : "En cours"},${s.duree},${s.montant},${s.poste},${s.categorie},${s.estBonus ? "Bonus" : "Normal"},${s.statut}`
+      `SESSION,${s.client},${format(new Date(s.debut), "HH:mm")},${s.fin ? format(new Date(s.fin), "HH:mm") : "En cours"},${s.duree},,${s.poste},${s.categorie},${s.estBonus ? "Bonus" : "Normal"},${s.statut}`
     );
     const rechargeRows = rapport.recharges.map(r =>
       `RECHARGE,${r.client},${format(new Date(r.date), "HH:mm")},,,${r.montant},,,Normal,VALIDÉE`
     );
     const csv = [
       `Rapport du ${rapport.date} — Gérant : ${rapport.gerant}`,
-      `Total jour : ${rapport.resume.totalMontantJour} F (Sessions: ${rapport.resume.totalMontantSessions} F | Recharges: ${rapport.resume.totalMontantRecharges} F)`,
+      `Revenus du jour : ${rapport.resume.revenuJour} F (${rapport.resume.nbRecharges} recharge(s))`,
+      `Sessions : ${rapport.resume.totalSessions} (${rapport.resume.sessionsTerminees} terminées · ${rapport.resume.sessionsEnPause} en pause)`,
       "",
       "Type,Client,Début,Fin,Durée,Montant,Poste,Catégorie,Mode,Statut",
       ...sessionRows,
@@ -129,28 +133,28 @@ export default function GerantRapport() {
             {/* Stats */}
             <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
               <StatCard
-                icon={DollarSign} label="Total du jour"
-                value={`${rapport.resume.totalMontantJour.toLocaleString()} F`}
-                sub={`Sessions ${rapport.resume.totalMontantSessions.toLocaleString()} F · Recharges ${rapport.resume.totalMontantRecharges.toLocaleString()} F`}
-                color="bg-primary/10 text-primary"
+                icon={DollarSign} label="Revenus du jour"
+                value={`${rapport.resume.revenuJour.toLocaleString()} F`}
+                sub={`${rapport.resume.nbRecharges} recharge(s) encaissée(s)`}
+                color="bg-green-500/10 text-green-400"
               />
               <StatCard
                 icon={TrendingUp} label="Sessions"
                 value={String(rapport.resume.totalSessions)}
-                sub={`${rapport.resume.sessionNormale} normales · ${rapport.resume.sessionBonus} bonus`}
-                color="bg-green-500/10 text-green-400"
+                sub={`${rapport.resume.sessionsTerminees} terminées · ${rapport.resume.sessionsEnPause} en pause · ${rapport.resume.sessionsActives} actives`}
+                color="bg-blue-500/10 text-blue-400"
               />
               <StatCard
                 icon={Users} label="Clients uniques"
                 value={String(Object.keys(rapport.parClient).length)}
                 sub="aujourd'hui"
-                color="bg-blue-500/10 text-blue-400"
+                color="bg-purple-500/10 text-purple-400"
               />
               <StatCard
-                icon={Clock} label="Temps géré"
-                value={rapport.resume.totalSecondes}
-                sub="temps de jeu total"
-                color="bg-purple-500/10 text-purple-400"
+                icon={Clock} label="Temps consommé"
+                value={rapport.resume.tempsConsomme}
+                sub={`${rapport.resume.tempsEnPause} en pause`}
+                color="bg-orange-500/10 text-orange-400"
               />
             </div>
 
@@ -164,8 +168,10 @@ export default function GerantRapport() {
                   {Object.entries(rapport.parCategorie).map(([nom, data]) => (
                     <div key={nom} className="flex items-center gap-3 px-5 py-3">
                       <span className="text-sm font-medium text-foreground flex-1">{nom}</span>
-                      <span className="text-xs text-muted-foreground">{data.nombre} sessions · {Math.floor(data.secondes / 60)} min</span>
-                      <span className="text-xs font-semibold text-primary">{data.montant.toLocaleString()} F</span>
+                      <span className="text-xs text-muted-foreground">{data.nombre} sessions</span>
+                      <span className="text-xs text-green-400">{data.terminees} terminées</span>
+                      {data.enPause > 0 && <span className="text-xs text-yellow-400">{data.enPause} en pause</span>}
+                      <span className="text-xs text-muted-foreground">{data.tempsConsommeMin} min consommées</span>
                     </div>
                   ))}
                 </div>
@@ -175,13 +181,13 @@ export default function GerantRapport() {
             {/* Sessions du jour */}
             <div className="bg-card border border-border rounded-xl overflow-hidden">
               <div className="px-5 py-4 border-b border-border flex items-center gap-2">
-                <TrendingUp size={14} className="text-green-400" />
+                <TrendingUp size={14} className="text-blue-400" />
                 <h2 className="text-sm font-semibold text-foreground">Sessions ({rapport.sessions.length})</h2>
-                {rapport.sessions.length > 0 && (
-                  <span className="ml-auto text-xs font-semibold text-primary">
-                    {rapport.resume.totalMontantSessions.toLocaleString()} F
-                  </span>
-                )}
+                <div className="ml-auto flex items-center gap-3 text-xs text-muted-foreground">
+                  <span className="flex items-center gap-1"><CheckCircle2 size={11} className="text-green-400" />{rapport.resume.sessionsTerminees} terminées</span>
+                  {rapport.resume.sessionsEnPause > 0 && <span className="flex items-center gap-1"><PauseCircle size={11} className="text-yellow-400" />{rapport.resume.sessionsEnPause} en pause</span>}
+                  {rapport.resume.sessionsBonus > 0 && <span className="flex items-center gap-1"><Gift size={11} className="text-primary" />{rapport.resume.sessionsBonus} bonus</span>}
+                </div>
               </div>
               <div className="overflow-x-auto">
                 {rapport.sessions.length === 0 ? (
@@ -196,7 +202,6 @@ export default function GerantRapport() {
                         <th className="text-left px-4 py-2.5 text-xs text-muted-foreground font-medium">Durée</th>
                         <th className="text-left px-4 py-2.5 text-xs text-muted-foreground font-medium">Poste</th>
                         <th className="text-left px-4 py-2.5 text-xs text-muted-foreground font-medium">Catégorie</th>
-                        <th className="text-right px-4 py-2.5 text-xs text-muted-foreground font-medium">Montant</th>
                         <th className="text-left px-4 py-2.5 text-xs text-muted-foreground font-medium">Statut</th>
                       </tr>
                     </thead>
@@ -210,15 +215,27 @@ export default function GerantRapport() {
                             </div>
                           </td>
                           <td className="px-4 py-3 text-muted-foreground">{format(new Date(s.debut), "HH:mm")}</td>
-                          <td className="px-4 py-3 text-muted-foreground">{s.fin ? format(new Date(s.fin), "HH:mm") : <span className="text-green-400">En cours</span>}</td>
+                          <td className="px-4 py-3 text-muted-foreground">
+                            {s.statut === 'ACTIVE' ? <span className="text-green-400">En cours</span>
+                              : s.statut === 'ARRETEE' ? <span className="text-yellow-400">En pause</span>
+                              : s.fin ? format(new Date(s.fin), "HH:mm") : '—'}
+                          </td>
                           <td className="px-4 py-3 text-foreground">{s.duree}</td>
                           <td className="px-4 py-3 text-muted-foreground">{s.poste}</td>
                           <td className="px-4 py-3 text-muted-foreground">{s.categorie}</td>
-                          <td className="px-4 py-3 text-right font-bold text-primary">{s.montant.toLocaleString()} F</td>
                           <td className="px-4 py-3">
-                            <Badge className={cn("text-xs", s.statut === "ACTIVE" ? "bg-green-500/10 text-green-400" : "bg-muted text-muted-foreground")}>
-                              {s.statut === "ACTIVE" ? "En cours" : s.statut === "ARRETEE" ? "Arrêtée" : "Terminée"}
+                            <Badge className={cn("text-xs",
+                              s.statut === "ACTIVE"   ? "bg-green-500/10 text-green-400" :
+                              s.statut === "ARRETEE"  ? "bg-yellow-500/10 text-yellow-400" :
+                              "bg-muted text-muted-foreground"
+                            )}>
+                              {s.statut === "ACTIVE" ? "En cours" : s.statut === "ARRETEE" ? "En pause" : "Terminée"}
                             </Badge>
+                            {s.statut === "ARRETEE" && s.tempsRestant > 0 && (
+                              <span className="ml-1.5 text-xs text-yellow-400 font-mono">
+                                {Math.floor(s.tempsRestant / 60)}min restantes
+                              </span>
+                            )}
                           </td>
                         </tr>
                       ))}
@@ -234,8 +251,8 @@ export default function GerantRapport() {
                 <Zap size={14} className="text-yellow-400" />
                 <h2 className="text-sm font-semibold text-foreground">Recharges ({rapport.recharges.length})</h2>
                 {rapport.recharges.length > 0 && (
-                  <span className="ml-auto text-xs font-semibold text-primary">
-                    {rapport.resume.totalMontantRecharges.toLocaleString()} F
+                  <span className="ml-auto text-xs font-semibold text-green-400">
+                    {rapport.resume.revenuJour.toLocaleString()} F
                   </span>
                 )}
               </div>

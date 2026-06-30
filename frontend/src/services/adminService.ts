@@ -231,6 +231,33 @@ const adminService = {
   envoyerPromotion: async (id: number): Promise<void> => {
     await api.post(`/admin/promotions/${id}/envoyer`);
   },
+
+  // ─── CONTACTS EXPORT ──────────────────────────────────────────────────────
+
+  getStatutContacts: async (): Promise<{ totalClients: number; nouveauxClients: number; dernierExport: string | null }> => {
+    const res = await api.get('/admin/contacts/statut');
+    return res.data;
+  },
+
+  exportContacts: async (): Promise<void> => {
+    const res = await api.get('/admin/contacts/export', { responseType: 'blob' });
+    const url = URL.createObjectURL(new Blob([res.data], { type: 'text/vcard' }));
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = 'clients_switch_sab.vcf';
+    a.click();
+    URL.revokeObjectURL(url);
+  },
+
+  exportNouveauxContacts: async (): Promise<void> => {
+    const res = await api.get('/admin/contacts/export/nouveaux', { responseType: 'blob' });
+    const url = URL.createObjectURL(new Blob([res.data], { type: 'text/vcard' }));
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = 'nouveaux_clients_switch_sab.vcf';
+    a.click();
+    URL.revokeObjectURL(url);
+  },
 };
 
 export default adminService;

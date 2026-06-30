@@ -7,23 +7,41 @@ import { Form, FormControl, FormField, FormItem, FormLabel, FormMessage } from "
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { z } from "zod";
-import { Plus, Megaphone, MessageCircle, CheckCircle2, Send } from "lucide-react";
+import {
+  Plus, Megaphone, CheckCircle2, Users, UserPlus,
+  Download, Copy, Check, PhoneCall
+} from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
 import { Badge } from "@/components/ui/badge";
 import { format } from "date-fns";
 import { fr } from "date-fns/locale";
 import adminService, { Promotion } from "@/services/adminService";
 
-const schema = z.object({ titre: z.string().min(10, "Message trop court") });
+const schema = z.object({ titre: z.string().min(10, "Message trop court (min 10 caractères)") });
 type FormValues = z.infer<typeof schema>;
+
+interface StatutContacts {
+  totalClients: number;
+  nouveauxClients: number;
+  dernierExport: string | null;
+}
 
 export default function AdminPromotions() {
   const { toast } = useToast();
   const [promotions, setPromotions] = useState<Promotion[]>([]);
+  const [statutContacts, setStatutContacts] = useState<StatutContacts | null>(null);
   const [open, setOpen] = useState(false);
+  const [exportingAll, setExportingAll] = useState(false);
+  const [exportingNew, setExportingNew] = useState(false);
+  const [copiedId, setCopiedId] = useState<number | null>(null);
 
   useEffect(() => {
-    adminService.getPromotions().then(setPromotions).catch(() => toast({ title: "Erreur chargement promotions", variant: "destructive" }));
+    adminService.getPromotions()
+      .then(setPromotions)
+      .catch(() => toast({ title: "Erreur chargement promotions", variant: "destructive" }));
+    adminService.getStatutContacts()
+      .then(setStatutContacts)
+      .catch(() => {});
   }, []);
 
   const form = useForm<FormValues>({
@@ -43,19 +61,48 @@ export default function AdminPromotions() {
     }
   }
 
-  async function handleSend(id: number, canal: "sms" | "whatsapp") {
+  async function handleExportTous() {
+    setExportingAll(true);
     try {
-      await adminService.envoyerPromotion(id);
-      setPromotions(prev => prev.map(p => p.id === id ? { ...p, envoyee: true } : p));
-      toast({ title: `Promotion envoyée via ${canal === "sms" ? "SMS" : "WhatsApp"}` });
+      await adminService.exportContacts();
+      toast({ title: `${statutContacts?.totalClients ?? ""} contacts exportés en .vcf` });
+      // Rafraîchir le statut
+      const s = await adminService.getStatutContacts();
+      setStatutContacts(s);
     } catch (err: any) {
-      toast({ title: err.response?.data?.message ?? "Erreur envoi", variant: "destructive" });
+      toast({ title: err.response?.data?.message ?? "Erreur export", variant: "destructive" });
+    } finally {
+      setExportingAll(false);
     }
+  }
+
+  async function handleExportNouveaux() {
+    setExportingNew(true);
+    try {
+      await adminService.exportNouveauxContacts();
+      toast({ title: `${statutContacts?.nouveauxClients ?? ""} nouveaux contacts exportés en .vcf` });
+      const s = await adminService.getStatutContacts();
+      setStatutContacts(s);
+    } catch (err: any) {
+      toast({ title: err.response?.data?.message ?? "Erreur export", variant: "destructive" });
+    } finally {
+      setExportingNew(false);
+    }
+  }
+
+  function handleCopyPromo(promo: Promotion) {
+    navigator.clipboard.writeText(promo.titre).then(() => {
+      setCopiedId(promo.id);
+      toast({ title: "Message copié — collez-le dans WhatsApp" });
+      setTimeout(() => setCopiedId(null), 2500);
+    });
   }
 
   return (
     <AdminLayout>
       <div className="p-6 space-y-5">
+
+        {/* En-tête */}
         <div className="flex items-center justify-between">
           <div>
             <h1 className="text-xl font-bold text-foreground">Promotions</h1>
@@ -66,6 +113,74 @@ export default function AdminPromotions() {
           </Button>
         </div>
 
+        {/* Bloc export contacts */}
+        <div className="bg-card border border-border rounded-xl p-5 space-y-4">
+          <div className="flex items-center gap-3">
+            <div className="w-9 h-9 rounded-xl bg-green-500/10 flex items-center justify-center flex-shrink-0">
+              <PhoneCall size={16} className="text-green-400" />
+            </div>
+            <div>
+              <h2 className="text-sm font-semibold text-foreground">Export contacts WhatsApp</h2>
+              <p className="text-xs text-muted-foreground mt-0.5">
+                Exportez vos clients en fichier .vcf — importez-le sur votre téléphone en un clic, puis diffusez via WhatsApp Business
+              </p>
+            </div>
+          </div>
+
+          {/* Compteurs */}
+          {statutContacts && (
+            <div className="grid grid-cols-2 gap-3">
+              <div className="bg-muted/40 rounded-lg p-3 flex items-center gap-3">
+                <Users size={16} className="text-muted-foreground flex-shrink-0" />
+                <div>
+                  <div className="text-lg font-bold text-foreground">{statutContacts.totalClients}</div>
+                  <div className="text-xs text-muted-foreground">clients au total</div>
+                </div>
+              </div>
+              <div className="bg-muted/40 rounded-lg p-3 flex items-center gap-3">
+                <UserPlus size={16} className="text-green-400 flex-shrink-0" />
+                <div>
+                  <div className="text-lg font-bold text-green-400">{statutContacts.nouveauxClients}</div>
+                  <div className="text-xs text-muted-foreground">
+                    nouveaux{statutContacts.dernierExport
+                      ? ` depuis le ${format(new Date(statutContacts.dernierExport), "dd MMM", { locale: fr })}`
+                      : " (jamais exporté)"}
+                  </div>
+                </div>
+              </div>
+            </div>
+          )}
+
+          {/* Boutons export */}
+          <div className="flex gap-2 flex-wrap">
+            <Button
+              variant="outline"
+              className="gap-1.5 border-green-500/30 text-green-400 hover:bg-green-500/10"
+              onClick={handleExportTous}
+              disabled={exportingAll || !statutContacts?.totalClients}
+              data-testid="button-export-tous"
+            >
+              <Download size={14} />
+              {exportingAll ? "Export en cours..." : `Tous les contacts (${statutContacts?.totalClients ?? 0})`}
+            </Button>
+            <Button
+              variant="outline"
+              className="gap-1.5 border-blue-500/30 text-blue-400 hover:bg-blue-500/10"
+              onClick={handleExportNouveaux}
+              disabled={exportingNew || !statutContacts?.nouveauxClients}
+              data-testid="button-export-nouveaux"
+            >
+              <UserPlus size={14} />
+              {exportingNew ? "Export en cours..." : `Nouveaux seulement (${statutContacts?.nouveauxClients ?? 0})`}
+            </Button>
+          </div>
+
+          <p className="text-xs text-muted-foreground border-t border-border pt-3">
+            💡 Après import sur Android/iPhone, créez une liste de diffusion WhatsApp Business avec les contacts "Client X" et envoyez votre promo en un message.
+          </p>
+        </div>
+
+        {/* Liste promotions */}
         <div className="space-y-3">
           {promotions.map(p => (
             <div key={p.id} className="bg-card border border-border rounded-xl p-4" data-testid={`card-promo-${p.id}`}>
@@ -81,34 +196,28 @@ export default function AdminPromotions() {
                     </span>
                     {p.envoyee && (
                       <Badge className="bg-green-500/10 text-green-400 border-green-500/20 text-xs gap-1">
-                        <CheckCircle2 size={9} /> Envoyée
+                        <CheckCircle2 size={9} /> Diffusée
                       </Badge>
                     )}
                   </div>
                 </div>
               </div>
-              {!p.envoyee && (
-                <div className="flex items-center gap-2 mt-3 pt-3 border-t border-border">
-                  <Button
-                    size="sm"
-                    variant="outline"
-                    className="gap-1.5 text-green-400 border-green-500/30 hover:bg-green-500/10"
-                    onClick={() => handleSend(p.id, "whatsapp")}
-                    data-testid={`button-send-whatsapp-${p.id}`}
-                  >
-                    <MessageCircle size={13} /> WhatsApp
-                  </Button>
-                  <Button
-                    size="sm"
-                    variant="outline"
-                    className="gap-1.5 text-blue-400 border-blue-500/30 hover:bg-blue-500/10"
-                    onClick={() => handleSend(p.id, "sms")}
-                    data-testid={`button-send-sms-${p.id}`}
-                  >
-                    <Send size={13} /> SMS
-                  </Button>
-                </div>
-              )}
+
+              {/* Bouton copier le message */}
+              <div className="mt-3 pt-3 border-t border-border">
+                <Button
+                  size="sm"
+                  variant="outline"
+                  className="gap-1.5 w-full"
+                  onClick={() => handleCopyPromo(p)}
+                  data-testid={`button-copy-promo-${p.id}`}
+                >
+                  {copiedId === p.id
+                    ? <><Check size={13} className="text-green-400" /> Message copié !</>
+                    : <><Copy size={13} /> Copier le message pour WhatsApp</>
+                  }
+                </Button>
+              </div>
             </div>
           ))}
 
@@ -119,6 +228,7 @@ export default function AdminPromotions() {
           )}
         </div>
 
+        {/* Dialog nouvelle promotion */}
         <Dialog open={open} onOpenChange={setOpen}>
           <DialogContent className="sm:max-w-md">
             <DialogHeader><DialogTitle>Nouvelle promotion</DialogTitle></DialogHeader>
@@ -130,15 +240,19 @@ export default function AdminPromotions() {
                     <FormControl>
                       <Textarea
                         {...field}
-                        placeholder="Ex: Ce weekend : 2H achetées = 30 min offertes..."
-                        rows={4}
+                        placeholder="Ex: 🎮 Ce weekend : 10% de réduction sur toutes les PS4 de 14h à 18h ! Venez jouer chez Switch SAB 🔥"
+                        rows={5}
                         data-testid="textarea-promo"
                       />
                     </FormControl>
                     <FormMessage />
+                    <p className="text-xs text-muted-foreground">
+                      Ce message sera copié tel quel pour envoi WhatsApp.
+                    </p>
                   </FormItem>
                 )} />
                 <DialogFooter>
+                  <Button variant="ghost" type="button" onClick={() => setOpen(false)}>Annuler</Button>
                   <Button type="submit" data-testid="button-submit-promo">Créer</Button>
                 </DialogFooter>
               </form>
