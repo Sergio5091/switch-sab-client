@@ -1,6 +1,7 @@
 import prisma from '../../services/prismaClient.js'
 import bcrypt from 'bcryptjs'
 import logger from '../../config/logger.js'
+import { normaliserOuEchouer } from '../../services/phoneService.js'
 
 // ─── POST /gerant/clients → Créer client ──────────────────────────────────
 
@@ -20,8 +21,20 @@ export const creerClient = async (req, res) => {
       return res.status(409).json({ message: 'Ce pseudo est déjà utilisé' })
     }
 
+    // Normaliser le téléphone au format E.164 selon le pays de la salle
+    let telephoneNormalise = telephone
     if (telephone) {
-      const telExistant = await prisma.user.findUnique({ where: { telephone } })
+      const salle = await prisma.salle.findUnique({
+        where: { id: req.user.salle_id },
+        select: { indicatifPays: true }
+      })
+      try {
+        telephoneNormalise = normaliserOuEchouer(telephone, salle?.indicatifPays ?? 'BJ')
+      } catch (phoneErr) {
+        return res.status(400).json({ message: phoneErr.message })
+      }
+
+      const telExistant = await prisma.user.findUnique({ where: { telephone: telephoneNormalise } })
       if (telExistant) {
         return res.status(409).json({ message: 'Ce numéro de téléphone est déjà utilisé' })
       }
@@ -51,7 +64,7 @@ export const creerClient = async (req, res) => {
     const client = await prisma.user.create({
       data: {
         pseudo,
-        telephone: telephone || `tel-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`,
+        telephone: telephoneNormalise || `tel-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`,
         motDePasse: hash,
         role: 'CLIENT',
         estEnfant: estEnfant || false,

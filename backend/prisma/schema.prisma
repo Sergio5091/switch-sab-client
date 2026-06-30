@@ -50,6 +50,8 @@ model Salle {
   disabled     Boolean  @default(false)
   switchType   String   @default("WIFI") // "USB" ou "WIFI"
   switchConfig String?                   // IP ou port COM
+  indicatifPays String  @default("BJ")   // Code ISO pays pour normalisation tél (ex: BJ, SN, FR, US)
+  dernierExportContacts DateTime?        // date du dernier export .vcf pour détection nouveaux clients
   createdAt    DateTime @default(now())
 
   users       User[]

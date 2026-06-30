@@ -9,7 +9,7 @@ import { creerGerant, listerGerants, modifierGerant } from './gerants.controller
 import { creerConfigBonus, getConfigBonus, modifierConfigBonus } from './bonus.controller.js'
 import { getPromoConfig, modifierPromoConfig } from './promoConfig.controller.js'
 import { genererCoupons, listerCoupons, exportCouponsPdf } from './coupons.controller.js'
-import { creerPromotion, listerPromotions, envoyerPromotion } from './promotions.controller.js'
+import { creerPromotion, listerPromotions, envoyerPromotion, exportContacts, exportNouveauxContacts, statutContacts } from './promotions.controller.js'
 
 const router = Router()
 
@@ -60,5 +60,10 @@ router.get ('/coupons/pdf',     exportCouponsPdf)
 router.post('/promotions',              creerPromotion)
 router.get ('/promotions',              listerPromotions)
 router.post('/promotions/:id/envoyer',  envoyerPromotion)
+
+// ─── Contacts (export VCF WhatsApp) ───────────────────────────────────────────
+router.get('/contacts/statut',          statutContacts)
+router.get('/contacts/export',          exportContacts)
+router.get('/contacts/export/nouveaux', exportNouveauxContacts)
 
 export default router

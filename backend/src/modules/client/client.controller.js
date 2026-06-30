@@ -1,5 +1,6 @@
 import prisma from '../../services/prismaClient.js'
 import bcrypt from 'bcryptjs'
+import logger from '../../config/logger.js'
 
 // ─── GET /client/home ────────────────────────────────────────────────────
 
@@ -15,7 +16,11 @@ export const getHome = async (req, res) => {
         transactions: { select: { montant: true, type: true }, where: { type: { in: ['RECHARGE_GERANT', 'RECHARGE_COUPON', 'BONUS'] } } },
         sessions: {
           where: { statut: { in: ['ACTIVE', 'ARRETEE', 'TERMINEE'] } },
-          select: { id: true, statut: true, fin: true, estBonus: true, debut: true, duree: { select: { libelle: true, secondes: true, prix: true } }, poste: { select: { nom: true } } },
+          select: {
+            id: true, statut: true, fin: true, estBonus: true, debut: true, tempsRestant: true,
+            duree: { select: { libelle: true, secondes: true, prix: true } },
+            poste: { select: { nom: true, categorieId: true, categorie: { select: { nom: true } } } }
+          },
           orderBy: { debut: 'desc' }, take: 10
         }
       }
@@ -52,7 +57,8 @@ export const getHome = async (req, res) => {
       bonus: user.bonus,
       soldeMonetaire,
       activeSession: user.sessions.find(s => s.statut === 'ACTIVE') ?? null,
-      recentSessions: user.sessions.filter(s => s.statut !== 'ACTIVE')
+      pausedSession: user.sessions.find(s => s.statut === 'ARRETEE') ?? null,
+      recentSessions: user.sessions.filter(s => s.statut === 'TERMINEE')
     })
   } catch (err) {
     console.error('[client/home GET]', err)
@@ -67,7 +73,7 @@ export const getSessions = async (req, res) => {
   try {
     const sessions = await prisma.session.findMany({
       where: { clientId },
-      select: { id: true, statut: true, fin: true, debut: true, estBonus: true, duree: { select: { libelle: true, secondes: true, prix: true } }, poste: { select: { nom: true } } },
+      select: { id: true, statut: true, fin: true, debut: true, estBonus: true, tempsRestant: true, duree: { select: { libelle: true, secondes: true, prix: true } }, poste: { select: { nom: true } } },
       orderBy: { debut: 'desc' }
     })
     return res.json(sessions)
@@ -252,23 +258,139 @@ export const stopSession = async (req, res) => {
     })
     if (!session) return res.status(404).json({ message: 'Session introuvable ou déjà terminée' })
 
+    // Calculer le temps réellement restant à l'instant de l'arrêt
     const tempsRestant = Math.max(0, Math.floor((new Date(session.fin).getTime() - Date.now()) / 1000))
 
     await prisma.$transaction(async (tx) => {
-      await tx.session.update({ where: { id: sessionId }, data: { statut: 'ARRETEE', fin: new Date() } })
+      await tx.session.update({
+        where: { id: sessionId },
+        data: {
+          statut: 'ARRETEE',
+          fin: new Date(),
+          // Conserver le temps restant dans la session pour une reprise ultérieure
+          tempsRestant
+        }
+      })
       await tx.poste.update({ where: { id: session.poste.id }, data: { statut: 'LIBRE' } })
-      if (tempsRestant > 0) {
-        const credit = await tx.credit.findFirst({ where: { clientId, categorieId: session.poste.categorieId } })
-        if (credit) await tx.credit.update({ where: { id: credit.id }, data: { solde: credit.solde + tempsRestant } })
-      }
+      // Le temps restant reste dans la session (pas recrédité dans Credit)
+      // Le client pourra reprendre via POST /session/:id/reprendre
     })
 
     const { getIO } = await import('../../socket.js')
     getIO().emit('session:stop', { sessionId, posteId: session.poste.id })
 
-    return res.json({ message: 'Session arrêtée', tempsRestantConserve: tempsRestant })
+    return res.json({
+      message: tempsRestant > 0
+        ? `Session mise en pause — ${Math.floor(tempsRestant / 60)} min ${tempsRestant % 60}s conservées`
+        : 'Session arrêtée',
+      tempsRestantConserve: tempsRestant,
+      peutReprendre: tempsRestant > 0
+    })
   } catch (err) {
     console.error('[client/session/:id/stop POST]', err)
+    return res.status(500).json({ message: 'Erreur serveur' })
+  }
+}
+
+// ─── POST /client/session/:id/reprendre ──────────────────────────────────────
+// Réactive une session ARRETEE avec le temps restant conservé,
+// sur un poste libre de la même catégorie
+
+export const reprendreSession = async (req, res) => {
+  const clientId = req.user.id
+  const sessionId = Number(req.params.id)
+
+  try {
+    // Récupérer la session en pause
+    const session = await prisma.session.findFirst({
+      where: { id: sessionId, clientId, statut: 'ARRETEE' },
+      include: { poste: { include: { categorie: true } } }
+    })
+
+    if (!session) {
+      return res.status(404).json({ message: 'Session en pause introuvable' })
+    }
+
+    if (session.tempsRestant <= 0) {
+      return res.status(400).json({ message: 'Aucun temps restant pour reprendre cette session' })
+    }
+
+    // Vérifier qu'il n'y a pas déjà une session active pour ce client
+    const sessionDejaActive = await prisma.session.findFirst({
+      where: { clientId, statut: 'ACTIVE' }
+    })
+    if (sessionDejaActive) {
+      return res.status(400).json({ message: 'Vous avez déjà une session active' })
+    }
+
+    const categorieId = session.poste.categorieId
+
+    // Trouver un poste libre dans la même catégorie
+    const posteLibre = await prisma.poste.findFirst({
+      where: { categorieId, statut: 'LIBRE' }
+    })
+
+    if (!posteLibre) {
+      return res.status(400).json({
+        message: `Aucun poste libre dans la catégorie ${session.poste.categorie.nom} pour le moment`
+      })
+    }
+
+    const nouvelleFin = new Date(Date.now() + session.tempsRestant * 1000)
+
+    // Réactiver la session sur le nouveau poste
+    await prisma.$transaction(async (tx) => {
+      await tx.session.update({
+        where: { id: sessionId },
+        data: {
+          statut: 'ACTIVE',
+          posteId: posteLibre.id,
+          // debut conservé volontairement — permet aux rapports de rattacher
+          // la session à son jour d'origine et évite le double comptage financier
+          fin: nouvelleFin,
+        }
+      })
+      await tx.poste.update({ where: { id: posteLibre.id }, data: { statut: 'OCCUPE' } })
+    })
+
+    // Allumer le poste
+    try {
+      const { default: switchService } = await import('../../switch/switchService.js')
+      await switchService.allumerPoste(posteLibre.id)
+    } catch (e) {
+      logger.warn(`[reprendreSession] Impossible d'allumer poste ${posteLibre.id}:`, e.message)
+    }
+
+    // Relancer le timer de fin automatique
+    try {
+      const { scheduleSessionEnd } = await import('../gerant/sessions.controller.js')
+      scheduleSessionEnd(sessionId, posteLibre.id, session.tempsRestant * 1000)
+    } catch (e) {
+      console.warn('[reprendreSession] scheduleSessionEnd non disponible:', e.message)
+    }
+
+    // Notifier via Socket.io
+    const { getIO } = await import('../../socket.js')
+    try {
+      getIO().emit('session:start', {
+        sessionId,
+        posteId: posteLibre.id,
+        clientId,
+        finPrevue: nouvelleFin,
+        estReprise: true
+      })
+    } catch (e) {}
+
+    return res.json({
+      message: 'Session reprise',
+      sessionId,
+      posteId: posteLibre.id,
+      posteNom: posteLibre.nom,
+      finPrevue: nouvelleFin,
+      tempsRestant: session.tempsRestant
+    })
+  } catch (err) {
+    console.error('[client/session/:id/reprendre POST]', err)
     return res.status(500).json({ message: 'Erreur serveur' })
   }
 }

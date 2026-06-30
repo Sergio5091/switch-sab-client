@@ -1,6 +1,6 @@
 import { useState, useEffect, useCallback } from "react";
 import ClientLayout from "@/layouts/ClientLayout";
-import { Clock, Gift, Square, Plus, Wallet, Sparkles } from "lucide-react";
+import { Clock, Gift, Square, Plus, Wallet, Sparkles, PauseCircle, PlayCircle } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "@/components/ui/dialog";
@@ -12,9 +12,10 @@ import { io } from "socket.io-client";
 import api from "@/services/api";
 
 function formatTime(secs: number) {
+  if (secs == null || isNaN(secs)) return "00:00";
   const m = Math.floor(Math.max(0, secs) / 60);
   const s = Math.max(0, secs) % 60;
-  return `${String(m).padStart(2, "00")}:${String(s).padStart(2, "00")}`;
+  return `${String(m).padStart(2, "0")}:${String(s).padStart(2, "0")}`;
 }
 function getTempsRestant(fin: string) {
   return Math.max(0, Math.floor((new Date(fin).getTime() - Date.now()) / 1000));
@@ -35,6 +36,7 @@ export default function ClientSession() {
   const [sessions, setSessions] = useState<Session[]>([]);
   const [tick, setTick] = useState(0);
   const [stoppingId, setStoppingId] = useState<number | null>(null);
+  const [resumingId, setResumingId] = useState<number | null>(null);
 
   // Prolongement
   const [prolongSessionId, setProlongSessionId] = useState<number | null>(null);
@@ -96,12 +98,25 @@ export default function ClientSession() {
     setStoppingId(sessionId);
     try {
       await api.post(`/client/session/${sessionId}/stop`);
-      toast({ title: "Session arrêtée" });
+      toast({ title: "Session mise en pause" });
       reload();
     } catch (err: any) {
       toast({ title: err.response?.data?.message ?? "Erreur", variant: "destructive" });
     } finally {
       setStoppingId(null);
+    }
+  }
+
+  async function handleReprendre(sessionId: number) {
+    setResumingId(sessionId);
+    try {
+      const res = await api.post(`/client/session/${sessionId}/reprendre`);
+      toast({ title: `Session reprise — ${res.data.posteNom}` });
+      reload();
+    } catch (err: any) {
+      toast({ title: err.response?.data?.message ?? "Erreur", variant: "destructive" });
+    } finally {
+      setResumingId(null);
     }
   }
 
@@ -132,7 +147,8 @@ export default function ClientSession() {
   const bonusSuffisantProlong = bonusDisponible && !!selectedProlongDuree && (bonus!.solde >= selectedProlongDuree.secondes);
 
   const activeSessions = sessions.filter(s => s.statut === 'ACTIVE');
-  const historique = sessions.filter(s => s.statut !== 'ACTIVE');
+  const pausedSessions = sessions.filter(s => s.statut === 'ARRETEE');
+  const historique = sessions.filter(s => s.statut === 'TERMINEE');
 
   return (
     <ClientLayout>
@@ -200,6 +216,44 @@ export default function ClientSession() {
           </div>
         )}
 
+        {/* Sessions en pause */}
+        {pausedSessions.length > 0 && (
+          <div className="space-y-3">
+            <p className="text-xs font-medium text-yellow-400 uppercase tracking-wide flex items-center gap-1.5">
+              <PauseCircle size={12} /> En pause ({pausedSessions.length})
+            </p>
+            {pausedSessions.map(s => (
+              <div key={s.id} className="bg-card border border-yellow-500/30 rounded-2xl p-4 flex items-center justify-between gap-3">
+                <div className="flex items-center gap-3">
+                  <div className="w-9 h-9 rounded-xl bg-yellow-500/10 flex items-center justify-center flex-shrink-0">
+                    {s.estBonus ? <Gift size={14} className="text-primary" /> : <PauseCircle size={14} className="text-yellow-400" />}
+                  </div>
+                  <div>
+                    <div className="text-sm font-medium text-foreground">{s.duree.libelle} — {s.poste.nom}</div>
+                    <div className="text-xs text-yellow-400 font-mono font-semibold mt-0.5">
+                      {formatTime(s.tempsRestant)} restantes
+                    </div>
+                  </div>
+                </div>
+                <Button
+                  size="sm"
+                  className="gap-1.5 bg-yellow-500 hover:bg-yellow-600 text-white flex-shrink-0"
+                  onClick={() => handleReprendre(s.id)}
+                  disabled={resumingId === s.id || activeSessions.length > 0}
+                >
+                  <PlayCircle size={13} />
+                  {resumingId === s.id ? "..." : "Reprendre"}
+                </Button>
+              </div>
+            ))}
+            {activeSessions.length > 0 && (
+              <p className="text-xs text-muted-foreground text-center">
+                Arrêtez votre session active pour reprendre une session en pause
+              </p>
+            )}
+          </div>
+        )}
+
         {/* Historique */}
         <div className="bg-card border border-border rounded-2xl overflow-hidden">
           <div className="px-4 py-3 border-b border-border">
@@ -222,7 +276,7 @@ export default function ClientSession() {
                   <Badge className={cn("text-xs",
                     s.statut === 'ARRETEE' ? "bg-yellow-500/10 text-yellow-400" : "bg-muted text-muted-foreground"
                   )}>
-                    {s.statut === 'ARRETEE' ? 'Arrêtée' : 'Terminée'}
+                    {s.statut === 'ARRETEE' ? 'En pause' : 'Terminée'}
                   </Badge>
                 </div>
               </div>

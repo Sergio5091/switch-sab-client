@@ -26,21 +26,20 @@ export const creerSalle = async (req, res) => {
       return res.status(409).json({ message: 'Une salle est déjà configurée.' })
     }
 
-    const { nom, pays, ville, quartier, telephone, switchType, switchConfig } = req.body
+    const { nom, pays, indicatifPays, ville, quartier, telephone, switchType, switchConfig } = req.body
 
-    if (!nom || !pays || !ville || !quartier || !telephone) {
+    if (!nom || !pays || !indicatifPays || !ville || !quartier || !telephone) {
       return res.status(400).json({
-        message: 'Champs requis : nom, pays, ville, quartier, telephone'
+        message: 'Champs requis : nom, pays, indicatifPays, ville, quartier, telephone'
       })
     }
 
-    // Transaction : créer salle + mettre à jour tous les admins (salleId = null)
     const result = await prisma.$transaction(async (tx) => {
-      // 1. Créer la salle
       const salle = await tx.salle.create({
         data: {
           nom,
           pays,
+          indicatifPays: indicatifPays.toUpperCase(),
           ville,
           quartier,
           telephone,

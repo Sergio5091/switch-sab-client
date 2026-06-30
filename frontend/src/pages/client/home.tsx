@@ -1,7 +1,7 @@
 import { useState, useEffect } from "react";
 import ClientLayout from "@/layouts/ClientLayout";
 import { Link } from "wouter";
-import { Gift, Clock, Play, Square, ChevronRight, Ticket, Wallet, Plus, Sparkles } from "lucide-react";
+import { Gift, Clock, Play, Square, ChevronRight, Ticket, Wallet, Plus, Sparkles, PauseCircle, PlayCircle } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "@/components/ui/dialog";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
@@ -21,7 +21,8 @@ function getTempsRestant(fin: string) {
 }
 
 interface Credit { solde: number; categorie: { id: number; nom: string } }
-interface ActiveSession { id: number; fin: string; estBonus: boolean; posteId: number; dureeId: number; duree: { libelle: string; secondes: number; categorieId?: number } }
+interface ActiveSession { id: number; fin: string; estBonus: boolean; posteId: number; dureeId: number; duree: { libelle: string; secondes: number; categorieId?: number }; poste?: { nom: string } }
+interface PausedSession { id: number; tempsRestant: number; estBonus: boolean; duree: { libelle: string; secondes: number }; poste: { nom: string; categorieId: number; categorie?: { nom: string } } }
 interface RecentSession { id: number; debut: string; estBonus: boolean; duree: { libelle: string; prix: number }; poste: { nom: string } }
 interface HomeData {
   pseudo: string;
@@ -29,6 +30,7 @@ interface HomeData {
   credits: Credit[];
   bonus: { solde: number; disponible: boolean } | null;
   activeSession: ActiveSession | null;
+  pausedSession: PausedSession | null;
   recentSessions: RecentSession[];
 }
 interface Duree { id: number; libelle: string; secondes: number; prix: number; categorieId?: number }
@@ -44,6 +46,7 @@ export default function ClientHome() {
   const [dureeId, setDureeId] = useState("");
   const [loading, setLoading] = useState(false);
   const [useBonus, setUseBonus] = useState(false);
+  const [resumingId, setResumingId] = useState<number | null>(null);
 
   // Prolongement de session
   const [openProlong, setOpenProlong] = useState(false);
@@ -107,11 +110,22 @@ export default function ClientHome() {
     setLoading(true);
     try {
       await api.post(`/client/session/${data.activeSession.id}/stop`);
-      toast({ title: "Session arrêtée" });
+      toast({ title: "Session mise en pause" });
       reload();
     } catch (err: any) {
       toast({ title: err.response?.data?.message ?? "Erreur", variant: "destructive" });
     } finally { setLoading(false); }
+  }
+
+  async function handleReprendre(sessionId: number) {
+    setResumingId(sessionId);
+    try {
+      const res = await api.post(`/client/session/${sessionId}/reprendre`);
+      toast({ title: `Session reprise — ${res.data.posteNom}` });
+      reload();
+    } catch (err: any) {
+      toast({ title: err.response?.data?.message ?? "Erreur", variant: "destructive" });
+    } finally { setResumingId(null); }
   }
 
   async function handleProlong() {
@@ -212,6 +226,38 @@ export default function ClientHome() {
             <div>
               <div className="text-sm font-medium text-foreground">Pas de session active</div>
               <div className="text-xs text-muted-foreground mt-0.5">Démarrez une session ou demandez à un gérant</div>
+            </div>
+          </div>
+        )}
+
+        {/* Session en pause */}
+        {!activeSession && data?.pausedSession && (
+          <div className="bg-card border border-yellow-500/30 rounded-2xl p-4">
+            <div className="flex items-center gap-2 mb-3">
+              <PauseCircle size={14} className="text-yellow-400" />
+              <span className="text-xs font-semibold text-yellow-400 uppercase tracking-wide">Session en pause</span>
+              {data.pausedSession.estBonus && (
+                <span className="ml-auto text-xs text-primary flex items-center gap-1"><Gift size={10} /> Bonus</span>
+              )}
+            </div>
+            <div className="flex items-center justify-between mb-3">
+              <div>
+                <div className="text-2xl font-mono font-bold text-yellow-400">
+                  {formatTime(data.pausedSession.tempsRestant)}
+                </div>
+                <div className="text-xs text-muted-foreground mt-0.5">
+                  {data.pausedSession.duree.libelle} — {data.pausedSession.poste.nom}
+                </div>
+              </div>
+              <Button
+                size="sm"
+                className="gap-1.5 bg-yellow-500 hover:bg-yellow-600 text-white"
+                onClick={() => handleReprendre(data.pausedSession!.id)}
+                disabled={resumingId === data.pausedSession.id}
+              >
+                <PlayCircle size={13} />
+                {resumingId === data.pausedSession.id ? "Reprise..." : "Reprendre"}
+              </Button>
             </div>
           </div>
         )}

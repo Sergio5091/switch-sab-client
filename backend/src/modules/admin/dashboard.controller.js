@@ -5,47 +5,46 @@ export const getDashboardStats = async (req, res) => {
   try {
     const salleId = req.user.salle_id
 
-    // 1. Compter les sessions du jour
     const today = new Date()
     today.setHours(0, 0, 0, 0)
-    
+
+    // 1. Sessions du jour (indicateur d'activité uniquement)
     const sessionsAujourdhui = await prisma.session.findMany({
       where: {
         client: { salleId },
         debut: { gte: today }
       },
-      include: {
-        duree: { select: { prix: true } },
-        client: { select: { id: true } }
-      }
+      select: { id: true }
     })
 
-    const revenuJour = sessionsAujourdhui.reduce((sum, s) => sum + s.duree.prix, 0)
-
-    // 2. Compter les postes + postes actifs
-    const postes = await prisma.poste.findMany({
-      where: { 
-        categorie: { 
-          salleId: salleId 
-        } 
+    // 2. Revenus du jour = recharges encaissées aujourd'hui (argent réellement perçu)
+    const rechargesJour = await prisma.transaction.aggregate({
+      where: {
+        client: { salleId },
+        type: 'RECHARGE_GERANT',
+        date: { gte: today }
       },
+      _sum: { montant: true }
+    })
+    const revenuJour = rechargesJour._sum.montant ?? 0
+
+    // 3. Postes + postes actifs
+    const postes = await prisma.poste.findMany({
+      where: { categorie: { salleId } },
       select: { id: true, statut: true }
     })
     const postesActifs = postes.filter(p => p.statut === 'OCCUPE').length
 
-    // 3. Compter les clients
+    // 4. Clients
     const clientsCount = await prisma.user.count({
       where: { salleId, role: 'CLIENT' }
     })
 
-    // 4. Catégories avec stats
+    // 5. Catégories avec stats
     const categories = await prisma.categorie.findMany({
       where: { salleId },
-      include: {
-        postes: { select: { id: true, statut: true } }
-      }
+      include: { postes: { select: { id: true, statut: true } } }
     })
-
     const categoriesStats = categories.map(cat => ({
       id: cat.id,
       nom: cat.nom,
@@ -53,7 +52,7 @@ export const getDashboardStats = async (req, res) => {
       nbActifs: cat.postes.filter(p => p.statut === 'OCCUPE').length
     }))
 
-    // 5. Activité des gérants
+    // 6. Activité des gérants — recharges encaissées par gérant aujourd'hui
     const gerants = await prisma.user.findMany({
       where: { salleId, role: 'GERANT' },
       select: { id: true, nom: true, prenom: true }
@@ -61,17 +60,26 @@ export const getDashboardStats = async (req, res) => {
 
     const gerantActivity = await Promise.all(
       gerants.map(async (g) => {
-        const sessions = await prisma.session.findMany({
-          where: {
-            gerantId: g.id,
-            debut: { gte: today }
-          },
-          include: { duree: { select: { prix: true } } }
-        })
+        const [sessions, rechargesAgg] = await Promise.all([
+          prisma.session.count({
+            where: { gerantId: g.id, debut: { gte: today } }
+          }),
+          prisma.transaction.aggregate({
+            where: {
+              // gerantId n'est pas sur Transaction — on cherche les recharges
+              // des clients de la salle faites aujourd'hui via ce gérant
+              // On utilise le champ gerantId de Transaction si présent
+              gerantId: g.id,
+              type: 'RECHARGE_GERANT',
+              date: { gte: today }
+            },
+            _sum: { montant: true }
+          })
+        ])
         return {
           gerant: g,
-          nbSessions: sessions.length,
-          revenu: sessions.reduce((sum, s) => sum + s.duree.prix, 0)
+          nbSessions: sessions,
+          revenu: rechargesAgg._sum.montant ?? 0
         }
       })
     )
@@ -80,14 +88,11 @@ export const getDashboardStats = async (req, res) => {
       stats: {
         sessionsAujourdhui: sessionsAujourdhui.length,
         revenuJour,
-        postes: {
-          total: postes.length,
-          actifs: postesActifs
-        },
+        postes: { total: postes.length, actifs: postesActifs },
         clients: clientsCount
       },
       categories: categoriesStats,
-      gerantActivity: gerantActivity.sort((a, b) => b.nbSessions - a.nbSessions)
+      gerantActivity: gerantActivity.sort((a, b) => b.revenu - a.revenu)
     })
   } catch (err) {
     console.error('[admin/dashboard GET]', err)
