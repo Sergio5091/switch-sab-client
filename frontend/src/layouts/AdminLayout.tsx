@@ -153,7 +153,7 @@ export default function AdminLayout({ children }: { children: React.ReactNode })
         {/* Nav */}
         <nav className="flex-1 overflow-y-auto py-3 px-3">
           {nav.map(item => {
-            const active = location.startsWith(item.href);
+            const active = item.href === location || location.startsWith(item.href + "/");
             return (
               <Link key={item.href} href={item.href}>
                 <div

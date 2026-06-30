@@ -1,8 +1,9 @@
 import { useState, useEffect, useCallback } from "react";
 import ClientLayout from "@/layouts/ClientLayout";
-import { Clock, Gift, Square } from "lucide-react";
+import { Clock, Gift, Square, Plus, Wallet, Sparkles } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "@/components/ui/dialog";
 import { format } from "date-fns";
 import { fr } from "date-fns/locale";
 import { cn } from "@/lib/utils";
@@ -13,18 +14,21 @@ import api from "@/services/api";
 function formatTime(secs: number) {
   const m = Math.floor(Math.max(0, secs) / 60);
   const s = Math.max(0, secs) % 60;
-  return `${String(m).padStart(2, "0")}:${String(s).padStart(2, "0")}`;
+  return `${String(m).padStart(2, "00")}:${String(s).padStart(2, "00")}`;
 }
 function getTempsRestant(fin: string) {
   return Math.max(0, Math.floor((new Date(fin).getTime() - Date.now()) / 1000));
 }
 
+interface Duree { id: number; libelle: string; secondes: number; prix: number; categorieId?: number }
 interface Session {
   id: number; statut: string; fin: string; debut: string;
   estBonus: boolean;
   duree: { libelle: string; secondes: number; prix: number };
   poste: { nom: string };
 }
+interface ClientBonus { solde: number; disponible: boolean }
+interface CreditCat { solde: number; categorie: { id: number; nom: string } }
 
 export default function ClientSession() {
   const { toast } = useToast();
@@ -32,27 +36,61 @@ export default function ClientSession() {
   const [tick, setTick] = useState(0);
   const [stoppingId, setStoppingId] = useState<number | null>(null);
 
+  // Prolongement
+  const [prolongSessionId, setProlongSessionId] = useState<number | null>(null);
+  const [prolongDurees, setProlongDurees] = useState<Duree[]>([]);
+  const [prolongDureeId, setProlongDureeId] = useState("");
+  const [prolongLoading, setProlongLoading] = useState(false);
+  const [useBonusProlong, setUseBonusProlong] = useState(false);
+
+  // Données client pour vérifier soldes
+  const [bonus, setBonus] = useState<ClientBonus | null>(null);
+  const [credits, setCredits] = useState<CreditCat[]>([]);
+  const [soldeMonetaire, setSoldeMonetaire] = useState(0);
+
   const reload = useCallback(() => {
     api.get('/client/sessions').then(r => setSessions(r.data)).catch(console.error);
+    // Recharger aussi les soldes pour les calculs de dispo
+    api.get('/client/home').then(r => {
+      setBonus(r.data.bonus);
+      setCredits(r.data.credits);
+      setSoldeMonetaire(r.data.soldeMonetaire);
+    }).catch(console.error);
   }, []);
 
   useEffect(() => { reload(); }, [reload]);
 
-  // Timer local — re-render chaque seconde
   useEffect(() => {
     const interval = setInterval(() => setTick(t => t + 1), 1000);
     return () => clearInterval(interval);
   }, []);
 
-  // Socket — recharger quand une session se termine
   useEffect(() => {
     const socketUrl = new URL(import.meta.env.VITE_API_URL ?? "http://localhost:3005/api").origin;
     const socket = io(socketUrl);
     socket.on("session:end", reload);
     socket.on("session:stop", reload);
     socket.on("session:start", reload);
+    socket.on("session:prolonged", reload);
     return () => { socket.disconnect(); };
   }, [reload]);
+
+  // Charger les durées quand on ouvre le dialog de prolongement
+  useEffect(() => {
+    if (!prolongSessionId) return;
+    const session = sessions.find(s => s.id === prolongSessionId);
+    if (!session) return;
+    api.get(`/client/session/${prolongSessionId}/categorie`)
+      .then(r => api.get(`/client/categories/${r.data.categorieId}/durees`))
+      .then(r => setProlongDurees(r.data))
+      .catch(() => {
+        api.get('/client/categories').then(r => {
+          if (r.data.length > 0) api.get(`/client/categories/${r.data[0].id}/durees`).then(d => setProlongDurees(d.data));
+        });
+      });
+    setProlongDureeId("");
+    setUseBonusProlong(false);
+  }, [prolongSessionId]);
 
   async function handleStop(sessionId: number) {
     setStoppingId(sessionId);
@@ -67,6 +105,32 @@ export default function ClientSession() {
     }
   }
 
+  async function handleProlong() {
+    if (!prolongSessionId || !prolongDureeId) return;
+    setProlongLoading(true);
+    try {
+      await api.post(`/client/session/${prolongSessionId}/prolonger`, { dureeId: Number(prolongDureeId), useBonus: useBonusProlong });
+      toast({ title: "Session prolongée ✅" });
+      closeProlongDialog();
+      reload();
+    } catch (err: any) {
+      toast({ title: err.response?.data?.message ?? "Erreur", variant: "destructive" });
+    } finally {
+      setProlongLoading(false);
+    }
+  }
+
+  function closeProlongDialog() {
+    setProlongSessionId(null);
+    setProlongDurees([]);
+    setProlongDureeId("");
+    setUseBonusProlong(false);
+  }
+
+  const bonusDisponible = bonus?.disponible === true && (bonus?.solde ?? 0) > 0;
+  const selectedProlongDuree = prolongDurees.find(d => d.id === Number(prolongDureeId));
+  const bonusSuffisantProlong = bonusDisponible && !!selectedProlongDuree && (bonus!.solde >= selectedProlongDuree.secondes);
+
   const activeSessions = sessions.filter(s => s.statut === 'ACTIVE');
   const historique = sessions.filter(s => s.statut !== 'ACTIVE');
 
@@ -78,7 +142,7 @@ export default function ClientSession() {
           <p className="text-sm text-muted-foreground mt-0.5">{sessions.length} session(s) au total</p>
         </div>
 
-        {/* Sessions actives — toutes affichées */}
+        {/* Sessions actives */}
         {activeSessions.length > 0 && (
           <div className="space-y-3">
             {activeSessions.map(s => {
@@ -110,15 +174,26 @@ export default function ClientSession() {
                       style={{ width: `${Math.min(pct, 100)}%` }}
                     />
                   </div>
-                  <Button
-                    size="sm"
-                    variant="destructive"
-                    className="w-full gap-1.5"
-                    onClick={() => handleStop(s.id)}
-                    disabled={stoppingId === s.id}
-                  >
-                    <Square size={13} /> {stoppingId === s.id ? "Arrêt..." : "Arrêter"}
-                  </Button>
+                  <div className="flex gap-2">
+                    <Button
+                      size="sm"
+                      variant="outline"
+                      className="flex-1 gap-1.5 border-primary/30 text-primary hover:bg-primary/10"
+                      onClick={() => setProlongSessionId(s.id)}
+                      disabled={stoppingId === s.id}
+                    >
+                      <Plus size={13} /> Prolonger
+                    </Button>
+                    <Button
+                      size="sm"
+                      variant="destructive"
+                      className="flex-1 gap-1.5"
+                      onClick={() => handleStop(s.id)}
+                      disabled={stoppingId === s.id}
+                    >
+                      <Square size={13} /> {stoppingId === s.id ? "Arrêt..." : "Arrêter"}
+                    </Button>
+                  </div>
                 </div>
               );
             })}
@@ -158,6 +233,104 @@ export default function ClientSession() {
           </div>
         </div>
       </div>
+
+      {/* Dialog prolonger */}
+      <Dialog open={!!prolongSessionId} onOpenChange={v => { if (!v) closeProlongDialog(); }}>
+        <DialogContent className="sm:max-w-sm">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2">
+              <Plus size={16} className="text-primary" />
+              Prolonger la session
+            </DialogTitle>
+          </DialogHeader>
+          <div className="space-y-3">
+            {/* Récap soldes */}
+            <div className="bg-muted/30 rounded-lg px-3 py-2.5 space-y-1 text-xs">
+              {soldeMonetaire > 0 && (
+                <div className="flex items-center gap-1.5 text-primary font-medium">
+                  <Wallet size={11} /> Solde : {soldeMonetaire.toLocaleString()} F
+                </div>
+              )}
+              {credits.filter(c => c.solde > 0).map(c => (
+                <div key={c.categorie.id} className="flex items-center gap-1.5 text-muted-foreground">
+                  <Clock size={11} /> {c.categorie.nom} : {Math.floor(c.solde / 60)} min
+                </div>
+              ))}
+              {bonusDisponible && (
+                <div className="flex items-center gap-1.5 text-orange-400 font-medium">
+                  <Sparkles size={11} /> Bonus : {Math.floor(bonus!.solde / 60)} min offerts
+                </div>
+              )}
+            </div>
+
+            {/* Durées */}
+            {prolongDurees.length > 0 ? (
+              <div className="grid grid-cols-3 gap-2">
+                {prolongDurees.sort((a, b) => a.secondes - b.secondes).map(d => {
+                  const creditCat = credits.find(c => c.categorie.id === d.categorieId);
+                  const peutAvecMinutes = (creditCat?.solde ?? 0) >= d.secondes;
+                  const peutAvecSolde = soldeMonetaire >= d.prix;
+                  const peutAvecBonus = bonusDisponible && (bonus!.solde >= d.secondes);
+                  const disponible = peutAvecMinutes || peutAvecSolde || peutAvecBonus;
+                  return (
+                    <button
+                      key={d.id}
+                      onClick={() => { if (disponible) { setProlongDureeId(String(d.id)); setUseBonusProlong(false); } }}
+                      disabled={!disponible}
+                      className={`p-3 rounded-xl border text-sm transition-all ${prolongDureeId === String(d.id) ? "bg-primary/10 border-primary/40 text-primary" : disponible ? "bg-muted border-border hover:border-primary/30" : "opacity-40 cursor-not-allowed bg-muted border-border"}`}
+                    >
+                      <div className="font-bold">{d.libelle}</div>
+                      <div className="text-xs mt-0.5 opacity-70">{d.prix.toLocaleString()} F</div>
+                    </button>
+                  );
+                })}
+              </div>
+            ) : (
+              <p className="text-xs text-muted-foreground text-center py-2">Chargement des durées...</p>
+            )}
+
+            {/* Toggle bonus */}
+            {bonusSuffisantProlong && (
+              <div className="rounded-xl border border-orange-500/30 bg-orange-500/5 p-3">
+                <p className="text-xs text-orange-400 font-medium mb-2 flex items-center gap-1.5">
+                  <Sparkles size={12} /> Vous avez assez de bonus pour cette durée
+                </p>
+                <div className="flex gap-2">
+                  <button
+                    onClick={() => setUseBonusProlong(false)}
+                    className={cn(
+                      "flex-1 py-2 px-3 rounded-lg border text-xs font-medium transition-all",
+                      !useBonusProlong ? "bg-primary/10 border-primary/40 text-primary" : "bg-muted border-border text-muted-foreground hover:border-primary/20"
+                    )}
+                  >
+                    <Wallet size={11} className="inline mr-1" /> Crédit / Solde
+                  </button>
+                  <button
+                    onClick={() => setUseBonusProlong(true)}
+                    className={cn(
+                      "flex-1 py-2 px-3 rounded-lg border text-xs font-medium transition-all",
+                      useBonusProlong ? "bg-orange-500/10 border-orange-500/40 text-orange-400" : "bg-muted border-border text-muted-foreground hover:border-orange-500/20"
+                    )}
+                  >
+                    <Sparkles size={11} className="inline mr-1" /> Utiliser mes bonus
+                  </button>
+                </div>
+              </div>
+            )}
+          </div>
+          <DialogFooter>
+            <Button variant="ghost" onClick={closeProlongDialog}>Annuler</Button>
+            <Button
+              onClick={handleProlong}
+              disabled={prolongLoading || !prolongDureeId}
+              className={useBonusProlong ? "bg-orange-500 hover:bg-orange-600 text-white" : ""}
+            >
+              {useBonusProlong ? <Sparkles size={14} className="mr-1.5" /> : <Plus size={14} className="mr-1.5" />}
+              {prolongLoading ? "En cours..." : "Prolonger"}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </ClientLayout>
   );
 }

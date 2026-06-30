@@ -213,11 +213,13 @@ export default function ClientHome() {
               <div className="text-sm font-medium text-foreground">Pas de session active</div>
               <div className="text-xs text-muted-foreground mt-0.5">Démarrez une session ou demandez à un gérant</div>
             </div>
-            <Button size="sm" className="gap-1.5" onClick={() => setOpenStart(true)}>
-              <Play size={13} /> Démarrer une session
-            </Button>
           </div>
         )}
+
+        {/* Bouton démarrer — toujours visible */}
+        <Button className="w-full gap-1.5" onClick={() => setOpenStart(true)}>
+          <Play size={14} /> Démarrer une session
+        </Button>
 
         {/* Action coupon */}
         <Link href="/client/coupon">
