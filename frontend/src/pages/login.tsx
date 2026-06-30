@@ -148,30 +148,29 @@ export default function LoginPage() {
     defaultValues: { identifiant: "", password: "admin123" },
   });
 
-  function onSubmit(values: FormValues) {
+  async function onSubmit(values: FormValues) {
     setError("");
     setLoading(true);
-    login(values.identifiant, values.password)
-      .then((result) => {
-        setLoading(false);
-        if (result.success && result.salleRequired) {
-          setLocation("/setup/salle");
-        } else if (result.success && result.licenceRequired) {
-          setLocation("/admin/licence");
-        } else if (result.success) {
-          toast({ title: "Connexion réussie" });
-          const user = JSON.parse(localStorage.getItem("switch_sab_user") || "{}");
-          const dest = user.role === "admin" ? "/admin/dashboard"
-            : user.role === "gerant" ? "/gerant/dashboard"
-            : "/client/home";
-          setLocation(dest);
-        }
-      })
-      .catch((err) => {
-        setLoading(false);
-        const errorMessage = err.message || "Erreur de connexion. Vérifiez que le serveur est démarré.";
-        setError(errorMessage);
-      });
+    try {
+      const result = await login(values.identifiant, values.password);
+      if (result.success && result.salleRequired) {
+        setLocation("/setup/salle");
+      } else if (result.success && result.licenceRequired) {
+        setLocation("/admin/licence");
+      } else if (result.success) {
+        toast({ title: "Connexion réussie" });
+        const user = JSON.parse(localStorage.getItem("switch_sab_user") || "{}");
+        const dest = user.role === "admin" ? "/admin/dashboard"
+          : user.role === "gerant" ? "/gerant/dashboard"
+          : "/client/home";
+        setLocation(dest);
+      }
+    } catch (err: any) {
+      const errorMessage = err.message || "Erreur de connexion. Vérifiez que le serveur est démarré.";
+      setError(errorMessage);
+    } finally {
+      setLoading(false);
+    }
   }
 
   function fillDemo(identifiant: string) {

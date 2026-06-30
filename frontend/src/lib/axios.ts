@@ -28,8 +28,9 @@ axiosInstance.interceptors.request.use(
 axiosInstance.interceptors.response.use(
   (response) => response,
   (error) => {
-    if (error.response?.status === 401) {
-      // Token expiré ou invalide
+    const isLoginRoute = error.config?.url?.includes('/auth/login');
+    if (error.response?.status === 401 && !isLoginRoute) {
+      // Token expiré ou invalide — pas sur la page de connexion
       localStorage.removeItem('authToken');
       localStorage.removeItem('currentUser');
       window.location.href = '/login';
