@@ -26,6 +26,7 @@ import AdminPromo from "@/pages/admin/promo";
 import AdminCoupons from "@/pages/admin/coupons";
 import AdminPromotions from "@/pages/admin/promotions";
 import AdminRapports from "@/pages/admin/rapports";
+import AdminSalle from "@/pages/admin/salle";
 
 import GerantDashboard from "@/pages/gerant/dashboard";
 import GerantSessionNew from "@/pages/gerant/session-new";
@@ -217,6 +218,9 @@ function Router() {
       </Route>
       <Route path="/admin/rapports">
         {() => <ProtectedRoute component={AdminRapports} roles={["admin"]} />}
+      </Route>
+      <Route path="/admin/salle">
+        {() => <ProtectedRoute component={AdminSalle} roles={["admin"]} />}
       </Route>
 
       {/* Gérant */}

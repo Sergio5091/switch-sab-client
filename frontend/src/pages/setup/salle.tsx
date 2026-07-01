@@ -160,7 +160,10 @@ const schema = z.object({
   telephone:    z.string().min(8, "Téléphone requis"),
   switchType:   z.enum(["WIFI", "USB"]),
   switchConfig: z.string().optional(),
-});
+}).refine(
+  (data) => data.switchType !== "WIFI" || (!!data.switchConfig && data.switchConfig.trim().length > 0),
+  { message: "L'adresse IP est requise pour le mode WIFI", path: ["switchConfig"] }
+);
 
 type FormValues = z.infer<typeof schema>;
 
@@ -370,11 +373,21 @@ export default function SetupSallePage() {
                 <FormItem>
                   <FormLabel>
                     {switchType === "WIFI" ? "Adresse IP du switch" : "Port COM (USB)"}
-                    <span className="text-muted-foreground ml-1 font-normal">(optionnel)</span>
+                    {switchType === "USB" && <span className="text-muted-foreground ml-1 font-normal">(optionnel)</span>}
+                    {switchType === "WIFI" && <span className="text-destructive ml-1 text-xs">*</span>}
                   </FormLabel>
                   <FormControl>
-                    <Input {...field} placeholder={switchType === "WIFI" ? "192.168.1.100" : "COM3"} className="h-11" />
+                    <Input
+                      {...field}
+                      placeholder={switchType === "WIFI" ? "192.168.1.100" : "COM3"}
+                      className="h-11"
+                    />
                   </FormControl>
+                  {switchType === "WIFI" && (
+                    <p className="text-xs text-muted-foreground">
+                      Adresse IP locale du switch sur le réseau de la salle
+                    </p>
+                  )}
                   <FormMessage />
                 </FormItem>
               )} />

@@ -2,6 +2,7 @@ import { Router } from 'express'
 import { verifyJwt, requireRole } from '../../middlewares/auth.middleware.js'
 
 import { getDashboardStats } from './dashboard.controller.js'
+import { getSalle, modifierSalle } from './salle.controller.js'
 import { creerCategorie, listerCategories, modifierCategorie, supprimerCategorie } from './categories.controller.js'
 import { creerDuree, listerDurees, modifierDuree, supprimerDuree } from './durees.controller.js'
 import { creerPoste, listerPostes, modifierPoste, supprimerPoste } from './postes.controller.js'
@@ -18,6 +19,10 @@ router.use(verifyJwt, requireRole('ADMIN'))
 
 // ─── Dashboard ────────────────────────────────────────────────────────────────
 router.get('/dashboard', getDashboardStats)
+
+// ─── Salle (config switch + infos) ───────────────────────────────────────────
+router.get  ('/salle', getSalle)
+router.patch('/salle', modifierSalle)
 
 // ─── Catégories ───────────────────────────────────────────────────────────────
 router.post  ('/categories',     creerCategorie)

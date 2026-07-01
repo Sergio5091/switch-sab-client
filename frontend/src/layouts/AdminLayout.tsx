@@ -34,6 +34,7 @@ const adminNav: NavItem[] = [
   { href: "/admin/coupons", label: "Coupons", icon: Ticket },
   { href: "/admin/promotions", label: "Promotions", icon: Megaphone },
   { href: "/admin/rapports", label: "Rapports", icon: BarChart2 },
+  { href: "/admin/salle", label: "Config salle", icon: Building2 },
 ];
 
 const gerantNav: NavItem[] = [
