@@ -21,7 +21,7 @@ function getTempsRestant(fin: string) {
 }
 
 interface Credit { solde: number; categorie: { id: number; nom: string } }
-interface ActiveSession { id: number; fin: string; estBonus: boolean; posteId: number; dureeId: number; duree: { libelle: string; secondes: number; categorieId?: number }; poste?: { nom: string } }
+interface ActiveSession { id: number; fin: string; estBonus: boolean; posteId: number; dureeId: number; tempsRestant: number; duree: { libelle: string; secondes: number; categorieId?: number }; poste?: { nom: string } }
 interface PausedSession { id: number; tempsRestant: number; estBonus: boolean; duree: { libelle: string; secondes: number }; poste: { nom: string; categorieId: number; categorie?: { nom: string } } }
 interface RecentSession { id: number; debut: string; estBonus: boolean; duree: { libelle: string; prix: number }; poste: { nom: string } }
 interface HomeData {
@@ -145,7 +145,9 @@ export default function ClientHome() {
 
   const activeSession = data?.activeSession ?? null;
   const tempsRestant = activeSession ? getTempsRestant(activeSession.fin) : 0;
-  const pct = activeSession ? (tempsRestant / activeSession.duree.secondes) * 100 : 0;
+  // Pour la barre, on utilise tempsRestant / tempsRestant initial (conservé dans la session)
+  const tempsInitial = activeSession?.tempsRestant ?? activeSession?.duree.secondes ?? 1;
+  const pct = activeSession ? (tempsRestant / tempsInitial) * 100 : 0;
   const urgentColor = pct < 10 ? "text-destructive" : pct < 25 ? "text-yellow-400" : "text-green-400";
   const selectedDuree = durees.find(d => d.id === Number(dureeId));
   const creditCat = data?.credits.find(c => c.categorie.id === Number(catId));

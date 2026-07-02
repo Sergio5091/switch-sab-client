@@ -53,18 +53,13 @@ export const getHome = async (req, res) => {
     })
 
     // Recalculer disponible dynamiquement selon le seuil configuré
-    // (le champ Bonus.disponible peut être obsolète si modifié directement en base)
     let bonusData = user.bonus
     if (bonusData && bonusData.solde > 0) {
       const configBonus = await prisma.configBonus.findUnique({ where: { salleId: user.salleId } })
       const seuil = configBonus?.seuilDeblocage ?? 0
       const disponibleCalcule = bonusData.solde >= seuil
-      // Mettre à jour en base si l'état a changé
       if (disponibleCalcule !== bonusData.disponible) {
-        await prisma.bonus.update({
-          where: { clientId },
-          data: { disponible: disponibleCalcule }
-        })
+        await prisma.bonus.update({ where: { clientId }, data: { disponible: disponibleCalcule } })
         bonusData = { ...bonusData, disponible: disponibleCalcule }
       }
     }
@@ -72,7 +67,7 @@ export const getHome = async (req, res) => {
     return res.json({
       pseudo: user.pseudo,
       credits,
-      bonus: user.bonus,
+      bonus: bonusData,
       soldeMonetaire: user.solde ?? 0,
       activeSession:  user.sessions.find(s => s.statut === 'ACTIVE')   ?? null,
       pausedSession:  user.sessions.find(s => s.statut === 'ARRETEE')  ?? null,
@@ -425,7 +420,7 @@ export const reprendreSession = async (req, res) => {
     await prisma.$transaction(async (tx) => {
       await tx.session.update({
         where: { id: sessionId },
-        data: { statut: 'ACTIVE', posteId: posteLibre.id, fin: nouvelleFin }
+        data: { statut: 'ACTIVE', posteId: posteLibre.id, fin: nouvelleFin, tempsRestant: session.tempsRestant }
       })
       await tx.poste.update({ where: { id: posteLibre.id }, data: { statut: 'OCCUPE' } })
     })
