@@ -84,6 +84,7 @@ model User {
   transactions   Transaction[]
   bonus          Bonus?
   promoCode      PromoCode?
+  solde          Float         @default(0)  // Solde monétaire FCFA — alimenté uniquement par coupons
 }
 
 model Categorie {

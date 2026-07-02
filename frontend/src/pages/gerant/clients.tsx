@@ -156,10 +156,10 @@ export default function GerantClients() {
                   </div>
                 </div>
                 <div className="flex items-center gap-3 flex-shrink-0 text-xs text-muted-foreground">
-                  {(c.soldeMonetaire ?? 0) > 0 && (
+                  {(c.solde ?? 0) > 0 && (
                     <div className="text-right">
                       <div className="font-medium text-foreground">Solde</div>
-                      <div className="flex items-center gap-1 text-green-400"><Wallet size={9} /> {(c.soldeMonetaire ?? 0).toLocaleString()} F</div>
+                      <div className="flex items-center gap-1 text-green-400"><Wallet size={9} /> {(c.solde ?? 0).toLocaleString()} F</div>
                     </div>
                   )}
                   {c.credits?.filter(cr => cr.solde > 0).map(cr => (

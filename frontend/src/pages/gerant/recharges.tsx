@@ -131,7 +131,6 @@ export default function GerantRecharges() {
   // Coupon
   const [couponCode, setCouponCode] = useState("");
   const [couponClientId, setCouponClientId] = useState("");
-  const [couponCategorieId, setCouponCategorieId] = useState("");
   const [couponLoading, setCouponLoading] = useState(false);
 
   // Complément de temps
@@ -243,16 +242,9 @@ export default function GerantRecharges() {
     }
     setCouponLoading(true);
     try {
-      const payload: any = { code: couponCode, clientId: Number(couponClientId) };
-      if (couponCategorieId) payload.categorieId = Number(couponCategorieId);
-      const res = await api.post('/gerant/recharges/coupon', payload);
-      const credits = res.data.credits as { minutesAjoutees: number; categorieId: number }[];
-      const detail = credits?.map(c => {
-        const cat = categories.find(cat => cat.id === c.categorieId);
-        return `+${c.minutesAjoutees}min ${cat?.nom ?? ''}`;
-      }).join(' | ') ?? '';
-      toast({ title: "Coupon appliqué ✅", description: detail });
-      setCouponCode(""); setCouponClientId(""); setCouponCategorieId("");
+      const res = await api.post('/gerant/recharges/coupon', { code: couponCode, clientId: Number(couponClientId) });
+      toast({ title: "Coupon appliqué ✅", description: res.data.message });
+      setCouponCode(""); setCouponClientId("");
       loadData();
     } catch (err: any) {
       toast({ title: err.response?.data?.message ?? "Erreur coupon", variant: "destructive" });
@@ -417,19 +409,7 @@ export default function GerantRecharges() {
             <Label>Code coupon</Label>
             <Input value={couponCode} onChange={e => setCouponCode(e.target.value.toUpperCase())} placeholder="XXXX-XXXX" className="font-mono" data-testid="input-coupon-code" />
           </div>
-          <div className="space-y-1.5">
-            <Label>Catégorie à créditer</Label>
-            <div className="flex flex-wrap gap-2">
-              {categories.map(c => (
-                <button key={c.id} onClick={() => setCouponCategorieId(String(c.id))}
-                  className={`px-3 py-1.5 rounded-lg border text-sm transition-all ${couponCategorieId === String(c.id) ? "bg-primary/10 border-primary/40 text-primary" : "bg-muted border-border hover:border-primary/30"}`}>
-                  {c.nom}
-                </button>
-              ))}
-            </div>
-            {!couponCategorieId && <p className="text-xs text-destructive">Choisir une catégorie</p>}
-          </div>
-          <Button variant="outline" onClick={handleLancerCoupon} disabled={couponLoading || !couponCategorieId} className="gap-1.5 border-orange-500/30 text-orange-400 hover:bg-orange-500/10" data-testid="button-apply-coupon">
+          <Button variant="outline" onClick={handleLancerCoupon} disabled={couponLoading || !couponClientId || !couponCode} className="gap-1.5 border-orange-500/30 text-orange-400 hover:bg-orange-500/10" data-testid="button-apply-coupon">
             <Ticket size={14} /> {couponLoading ? "Application..." : "Appliquer le coupon"}
           </Button>
         </div>

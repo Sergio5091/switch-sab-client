@@ -96,37 +96,32 @@ export const creerClient = async (req, res) => {
       })
 
       if (configBonus && (configBonus.bonusParrain > 0 || configBonus.bonusFilleul > 0)) {
-        try {
-          await prisma.$transaction(async (tx) => {
-            // ── Bonus PARRAIN : créditer son solde monétaire ───────────────
-            if (configBonus.bonusParrain > 0) {
-              await tx.transaction.create({
-                data: {
-                  clientId: parrain.id,
-                  montant: configBonus.bonusParrain,
-                  type: 'BONUS',
-                }
-              })
-              logger.info(`Parrainage : ${parrain.pseudo} reçoit +${configBonus.bonusParrain} FCFA (solde monétaire) pour avoir parrainé ${pseudo}`)
-            }
+        await prisma.$transaction(async (tx) => {
+          // ── Bonus PARRAIN : incrémenter User.solde ─────────────────────
+          if (configBonus.bonusParrain > 0) {
+            await tx.user.update({
+              where: { id: parrain.id },
+              data: { solde: { increment: configBonus.bonusParrain } }
+            })
+            await tx.transaction.create({
+              data: { clientId: parrain.id, montant: configBonus.bonusParrain, type: 'BONUS' }
+            })
+            logger.info(`Parrainage : ${parrain.pseudo} reçoit +${configBonus.bonusParrain} FCFA (solde monétaire) pour avoir parrainé ${pseudo}`)
+          }
 
-            // ── Bonus FILLEUL : créditer son solde monétaire ───────────────
-            if (configBonus.bonusFilleul > 0) {
-              await tx.transaction.create({
-                data: {
-                  clientId: client.id,
-                  montant: configBonus.bonusFilleul,
-                  type: 'BONUS',
-                }
-              })
-              logger.info(`Parrainage : ${pseudo} (filleul id=${client.id}) reçoit +${configBonus.bonusFilleul} FCFA (solde monétaire) à l'inscription`)
-            }
-          })
-          logger.info(`Parrainage transaction OK — parrain=${parrain.id}, filleul=${client.id}`)
-        } catch (bonusErr) {
-          logger.error(`Parrainage ECHEC transaction bonus — parrain=${parrain.id}, filleul=${client.id}`, bonusErr)
-          // On ne fait pas échouer la création du client pour autant
-        }
+          // ── Bonus FILLEUL : incrémenter User.solde ─────────────────────
+          if (configBonus.bonusFilleul > 0) {
+            await tx.user.update({
+              where: { id: client.id },
+              data: { solde: { increment: configBonus.bonusFilleul } }
+            })
+            await tx.transaction.create({
+              data: { clientId: client.id, montant: configBonus.bonusFilleul, type: 'BONUS' }
+            })
+            logger.info(`Parrainage : ${pseudo} (filleul id=${client.id}) reçoit +${configBonus.bonusFilleul} FCFA (solde monétaire) à l'inscription`)
+          }
+        })
+        logger.info(`Parrainage transaction OK — parrain=${parrain.id}, filleul=${client.id}`)
       } else {
         logger.warn(`Parrainage : configBonus introuvable ou montants à 0 pour salleId=${req.user.salle_id}`)
       }
@@ -183,6 +178,7 @@ export const listerClients = async (req, res) => {
         estEnfant: true,
         active: true,
         createdAt: true,
+        solde: true,
         credits: {
           select: {
             id: true,
@@ -192,30 +188,12 @@ export const listerClients = async (req, res) => {
         },
         bonus: {
           select: { solde: true, disponible: true }
-        },
-        transactions: {
-          select: { montant: true, type: true }
         }
       },
       orderBy: { createdAt: 'desc' }
     })
 
-    // Calculer le solde monétaire pour chaque client
-    const clientsAvecSolde = clients.map(c => {
-      const totalEncaisse = c.transactions
-        .filter(t => ['RECHARGE_GERANT', 'RECHARGE_COUPON', 'BONUS'].includes(t.type))
-        .reduce((sum, t) => sum + t.montant, 0)
-      const totalDepense = c.transactions
-        .filter(t => t.type === 'SESSION')
-        .reduce((sum, t) => sum + t.montant, 0)
-      const { transactions: _, ...clientSansTransactions } = c
-      return {
-        ...clientSansTransactions,
-        soldeMonetaire: totalEncaisse - totalDepense
-      }
-    })
-
-    return res.json(clientsAvecSolde)
+    return res.json(clients)
   } catch (err) {
     console.error('[gerant/clients GET]', err)
     return res.status(500).json({

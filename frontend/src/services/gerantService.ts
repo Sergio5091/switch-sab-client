@@ -10,9 +10,9 @@ export interface Client {
   estEnfant: boolean;
   active: boolean;
   createdAt: string;
+  solde?: number;
   credits: { id: number; solde: number; categorie: { id: number; nom: string } }[];
   bonus?: { solde: number; disponible: boolean };
-  soldeMonetaire?: number;
 }
 
 export interface Session {
