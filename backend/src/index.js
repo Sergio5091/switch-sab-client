@@ -3,6 +3,7 @@ import cors from 'cors'
 import dotenv from 'dotenv'
 import corsOptions from './config/cors.js'
 import { checkLicenceAtStartup, requireLicence } from './middlewares/licence.middleware.js'
+import { verifyJwt, requireRole } from './middlewares/auth.middleware.js'
 import prisma from './services/prismaClient.js'
 import logger from './config/logger.js'
 import { initSessionScheduler } from './services/sessionScheduler.js'
@@ -92,7 +93,7 @@ app.get('/', (req, res) => {
 
 // ─── Route de debug (dev uniquement) ──────────────────────────────────────────
 if (process.env.NODE_ENV !== 'production') {
-  app.post('/api/debug/reset-sessions', async (req, res) => {
+  app.post('/api/debug/reset-sessions', verifyJwt, requireRole('ADMIN'), async (req, res) => {
     try {
       const sessions = await prisma.session.findMany({ where: { statut: 'ACTIVE' }, include: { poste: true } })
       const coupons = prisma.sessionAnonymeCoupon

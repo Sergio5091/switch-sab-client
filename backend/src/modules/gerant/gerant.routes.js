@@ -9,7 +9,7 @@ import { rapportJour, rapportPeriode } from './rapport.controller.js'
 import { listerCategories } from '../admin/categories.controller.js'
 import { listerPostes } from '../admin/postes.controller.js'
 import { listerDurees } from '../admin/durees.controller.js'
-import { genererCoupons, listerCoupons } from './coupons.controller.js'
+import { genererCoupons, listerCoupons } from '../admin/coupons.controller.js'
 
 const router = Router()
 

@@ -273,16 +273,11 @@ export const arreterSession = async (req, res) => {
 
     // 3. TRANSACTION : mettre à jour session + libérer poste
     await prisma.$transaction(async (tx) => {
-      // Mettre à jour session en ARRETEE
+      const tempsRestant = Math.max(0, Math.floor((new Date(session.fin).getTime() - Date.now()) / 1000))
       await tx.session.update({
         where: { id: sessionId },
-        data: {
-          statut: 'ARRETEE',
-          fin: new Date()
-        }
+        data: { statut: 'ARRETEE', fin: new Date(), tempsRestant }
       })
-
-      // Libérer poste
       await tx.poste.update({
         where: { id: session.poste.id },
         data: { statut: 'LIBRE' }

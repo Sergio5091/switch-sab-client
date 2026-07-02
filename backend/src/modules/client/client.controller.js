@@ -117,7 +117,7 @@ export const getLeaderboard = async (req, res) => {
 
 export const startSession = async (req, res) => {
   const clientId = req.user.id
-  const { categorieId, dureeId } = req.body
+  const { categorieId, dureeId, useBonus } = req.body
   if (!categorieId || !dureeId) return res.status(400).json({ message: 'categorieId et dureeId requis' })
 
   try {
@@ -131,7 +131,31 @@ export const startSession = async (req, res) => {
     })
     if (!posteLibre) return res.status(400).json({ message: 'Aucun poste libre dans cette catégorie' })
 
-    // ── Vérifier la source de crédit disponible ──
+    // ── Mode bonus choisi par le client ──────────────────────────────────
+    if (useBonus) {
+      const bonus = await prisma.bonus.findUnique({ where: { clientId } })
+      if (!bonus || !bonus.disponible || bonus.solde < duree.secondes) {
+        return res.status(400).json({ message: 'Bonus indisponible ou insuffisant pour cette durée' })
+      }
+      const finPrevue = new Date(Date.now() + duree.secondes * 1000)
+      const session = await prisma.$transaction(async (tx) => {
+        await tx.bonus.update({ where: { id: bonus.id }, data: { solde: { decrement: duree.secondes } } })
+        const s = await tx.session.create({
+          data: { clientId, gerantId: clientId, posteId: posteLibre.id, dureeId: Number(dureeId), tempsRestant: duree.secondes, fin: finPrevue, statut: 'ACTIVE', estBonus: true }
+        })
+        await tx.poste.update({ where: { id: posteLibre.id }, data: { statut: 'OCCUPE' } })
+        return s
+      })
+      const { getIO } = await import('../../socket.js')
+      try { getIO().emit('session:start', { sessionId: session.id, posteId: posteLibre.id, clientId, finPrevue, estBonus: true }) } catch (e) {}
+      try {
+        const { scheduleSessionEnd } = await import('../gerant/sessions.controller.js')
+        scheduleSessionEnd(session.id, posteLibre.id, duree.secondes * 1000)
+      } catch (e) { console.warn('[startSession useBonus] scheduleSessionEnd:', e.message) }
+      return res.status(201).json({ message: 'Session démarrée avec vos bonus', sessionId: session.id, finPrevue, modeBonus: true })
+    }
+
+    // ── Mode normal : crédit en secondes ou solde monétaire ──────────────
     const credit = await prisma.credit.findFirst({
       where: { clientId, categorieId: Number(categorieId) }
     })
@@ -141,9 +165,9 @@ export const startSession = async (req, res) => {
     let modeAchat = false
 
     if (soldeSecondes >= duree.secondes) {
-      modeAchat = false  // on débite les minutes
+      modeAchat = false
     } else if (soldeMonetaire >= duree.prix) {
-      modeAchat = true   // on débite le solde FCFA
+      modeAchat = true
     } else {
       return res.status(400).json({
         message: `Crédit insuffisant. Disponible : ${Math.floor(soldeSecondes / 60)} min ou ${soldeMonetaire.toLocaleString()} F (requis : ${duree.prix.toLocaleString()} F)`
@@ -154,30 +178,12 @@ export const startSession = async (req, res) => {
 
     const session = await prisma.$transaction(async (tx) => {
       if (modeAchat) {
-        // Débiter User.solde
-        await tx.user.update({
-          where: { id: clientId },
-          data: { solde: { decrement: duree.prix } }
-        })
+        await tx.user.update({ where: { id: clientId }, data: { solde: { decrement: duree.prix } } })
       } else {
-        // Débiter les secondes
-        await tx.credit.update({
-          where: { id: credit.id },
-          data: { solde: { decrement: duree.secondes } }
-        })
+        await tx.credit.update({ where: { id: credit.id }, data: { solde: { decrement: duree.secondes } } })
       }
-
       const s = await tx.session.create({
-        data: {
-          clientId,
-          gerantId: clientId,
-          posteId: posteLibre.id,
-          dureeId: Number(dureeId),
-          tempsRestant: duree.secondes,
-          fin: finPrevue,
-          statut: 'ACTIVE',
-          estBonus: false
-        }
+        data: { clientId, gerantId: clientId, posteId: posteLibre.id, dureeId: Number(dureeId), tempsRestant: duree.secondes, fin: finPrevue, statut: 'ACTIVE', estBonus: false }
       })
       await tx.poste.update({ where: { id: posteLibre.id }, data: { statut: 'OCCUPE' } })
       return s
@@ -185,13 +191,10 @@ export const startSession = async (req, res) => {
 
     const { getIO } = await import('../../socket.js')
     try { getIO().emit('session:start', { sessionId: session.id, posteId: posteLibre.id, clientId, finPrevue }) } catch (e) {}
-
     try {
       const { scheduleSessionEnd } = await import('../gerant/sessions.controller.js')
       scheduleSessionEnd(session.id, posteLibre.id, duree.secondes * 1000)
-    } catch (e) {
-      console.warn('[startSession] scheduleSessionEnd non disponible:', e.message)
-    }
+    } catch (e) { console.warn('[startSession] scheduleSessionEnd non disponible:', e.message) }
 
     return res.status(201).json({ message: 'Session démarrée', sessionId: session.id, finPrevue, modeAchat })
   } catch (err) {
@@ -291,7 +294,7 @@ export const getCategorieSession = async (req, res) => {
 export const prolongerSession = async (req, res) => {
   const clientId = req.user.id
   const sessionId = Number(req.params.id)
-  const { dureeId } = req.body
+  const { dureeId, useBonus } = req.body
   if (!dureeId) return res.status(400).json({ message: 'dureeId requis' })
 
   try {
@@ -306,6 +309,31 @@ export const prolongerSession = async (req, res) => {
     })
     if (!duree) return res.status(404).json({ message: 'Durée introuvable pour cette catégorie' })
 
+    const tempsRestantActuel = Math.max(0, Math.floor((new Date(session.fin).getTime() - Date.now()) / 1000))
+    const nouvelleFin = new Date(Date.now() + (tempsRestantActuel + duree.secondes) * 1000)
+
+    // ── Mode bonus ────────────────────────────────────────────────────────
+    if (useBonus) {
+      const bonus = await prisma.bonus.findUnique({ where: { clientId } })
+      if (!bonus || !bonus.disponible || bonus.solde < duree.secondes) {
+        return res.status(400).json({ message: 'Bonus indisponible ou insuffisant pour cette durée' })
+      }
+      await prisma.$transaction(async (tx) => {
+        await tx.bonus.update({ where: { id: bonus.id }, data: { solde: { decrement: duree.secondes } } })
+        await tx.session.update({ where: { id: sessionId }, data: { fin: nouvelleFin, tempsRestant: tempsRestantActuel + duree.secondes } })
+      })
+      try {
+        const { scheduleSessionEnd, getSessionTimeouts } = await import('../gerant/sessions.controller.js')
+        const timeouts = getSessionTimeouts()
+        if (timeouts[sessionId]) { clearTimeout(timeouts[sessionId]); delete timeouts[sessionId] }
+        scheduleSessionEnd(sessionId, session.poste.id, (tempsRestantActuel + duree.secondes) * 1000)
+      } catch (e) { console.warn('[prolongerSession useBonus] scheduleSessionEnd:', e.message) }
+      const { getIO } = await import('../../socket.js')
+      try { getIO().emit('session:prolonged', { sessionId, posteId: session.poste.id, nouvelleFin }) } catch (e) {}
+      return res.json({ message: `Session prolongée de ${duree.libelle} avec vos bonus`, nouvelleFin, tempsRestant: tempsRestantActuel + duree.secondes, modeBonus: true })
+    }
+
+    // ── Mode normal : minutes ou solde ────────────────────────────────────
     const credit = await prisma.credit.findFirst({
       where: { clientId, categorieId: session.poste.categorieId }
     })
@@ -313,7 +341,6 @@ export const prolongerSession = async (req, res) => {
     const soldeMonetaire = await getSoldeMonetaire(clientId)
 
     let modeAchat = false
-
     if (soldeSecondes >= duree.secondes) {
       modeAchat = false
     } else if (soldeMonetaire >= duree.prix) {
@@ -324,25 +351,13 @@ export const prolongerSession = async (req, res) => {
       })
     }
 
-    const tempsRestantActuel = Math.max(0, Math.floor((new Date(session.fin).getTime() - Date.now()) / 1000))
-    const nouvelleFin = new Date(Date.now() + (tempsRestantActuel + duree.secondes) * 1000)
-
     await prisma.$transaction(async (tx) => {
       if (modeAchat) {
-        await tx.user.update({
-          where: { id: clientId },
-          data: { solde: { decrement: duree.prix } }
-        })
+        await tx.user.update({ where: { id: clientId }, data: { solde: { decrement: duree.prix } } })
       } else {
-        await tx.credit.update({
-          where: { id: credit.id },
-          data: { solde: { decrement: duree.secondes } }
-        })
+        await tx.credit.update({ where: { id: credit.id }, data: { solde: { decrement: duree.secondes } } })
       }
-      await tx.session.update({
-        where: { id: sessionId },
-        data: { fin: nouvelleFin, tempsRestant: tempsRestantActuel + duree.secondes }
-      })
+      await tx.session.update({ where: { id: sessionId }, data: { fin: nouvelleFin, tempsRestant: tempsRestantActuel + duree.secondes } })
     })
 
     try {
@@ -350,19 +365,12 @@ export const prolongerSession = async (req, res) => {
       const timeouts = getSessionTimeouts()
       if (timeouts[sessionId]) { clearTimeout(timeouts[sessionId]); delete timeouts[sessionId] }
       scheduleSessionEnd(sessionId, session.poste.id, (tempsRestantActuel + duree.secondes) * 1000)
-    } catch (e) {
-      console.warn('[prolongerSession] scheduleSessionEnd non disponible:', e.message)
-    }
+    } catch (e) { console.warn('[prolongerSession] scheduleSessionEnd non disponible:', e.message) }
 
     const { getIO } = await import('../../socket.js')
     try { getIO().emit('session:prolonged', { sessionId, posteId: session.poste.id, nouvelleFin }) } catch (e) {}
 
-    return res.json({
-      message: `Session prolongée de ${duree.libelle}`,
-      nouvelleFin,
-      tempsRestant: tempsRestantActuel + duree.secondes,
-      modeAchat
-    })
+    return res.json({ message: `Session prolongée de ${duree.libelle}`, nouvelleFin, tempsRestant: tempsRestantActuel + duree.secondes, modeAchat })
   } catch (err) {
     console.error('[client/session/:id/prolonger POST]', err)
     return res.status(500).json({ message: 'Erreur serveur' })

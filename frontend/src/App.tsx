@@ -11,11 +11,6 @@ import LicencePage from "@/pages/admin/licence";
 import SetupSallePage from "@/pages/setup/salle";
 import NotFound from "@/pages/not-found";
 
-// import SuperAdminDashboard from "@/pages/superadmin/dashboard";
-// import SuperAdminSalles from "@/pages/superadmin/salles";
-// import SuperAdminAdmins from "@/pages/superadmin/admins";
-// import SuperAdminLicences from "@/pages/superadmin/licences";
-
 import AdminDashboard from "@/pages/admin/dashboard";
 import AdminCategories from "@/pages/admin/categories";
 import AdminDurees from "@/pages/admin/durees";
@@ -111,7 +106,6 @@ function RoleRedirect() {
   if (licenceStatut === null) return null;
 
   switch (currentUser.role) {
-    case "superadmin": return <Redirect to="/superadmin/dashboard" />;
     case "admin": return <Redirect to="/admin/dashboard" />;
     case "gerant": return <Redirect to="/gerant/dashboard" />;
     case "client": return <Redirect to="/client/home" />;
@@ -173,20 +167,6 @@ function Router() {
       <Route path="/admin/licence">
         {() => <LicenseRequiredRoute component={LicencePage} />}
       </Route>
-
-      {/* Super Admin
-      <Route path="/superadmin/dashboard">
-        {() => <ProtectedRoute component={SuperAdminDashboard} roles={["superadmin"]} />}
-      </Route>
-      <Route path="/superadmin/salles">
-        {() => <ProtectedRoute component={SuperAdminSalles} roles={["superadmin"]} />}
-      </Route>
-      <Route path="/superadmin/admins">
-        {() => <ProtectedRoute component={SuperAdminAdmins} roles={["superadmin"]} />}
-      </Route>
-      <Route path="/superadmin/licences">
-        {() => <ProtectedRoute component={SuperAdminLicences} roles={["superadmin"]} />}
-      </Route> */}
 
       {/* Admin */}
       <Route path="/admin/dashboard">

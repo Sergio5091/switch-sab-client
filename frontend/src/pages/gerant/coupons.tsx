@@ -5,7 +5,7 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
-import { Ticket, CheckCircle2, QrCode, Printer } from "lucide-react";
+import { Ticket, CheckCircle2, QrCode, Printer, Copy } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
 import { Badge } from "@/components/ui/badge";
 import { cn } from "@/lib/utils";
@@ -234,9 +234,20 @@ export default function GerantCoupons() {
                 {coupons.length === 0 && (
                   <tr><td colSpan={4} className="px-5 py-8 text-center text-muted-foreground text-sm">Aucun coupon généré</td></tr>
                 )}
-                {coupons.map(coupon => (
+                {[...actifs, ...utilises].map(coupon => (
                   <tr key={coupon.id} className={cn("hover:bg-muted/20 transition-colors", coupon.utilise && "opacity-50")}>
-                    <td className="px-5 py-3 font-mono text-xs text-foreground tracking-widest">{coupon.code}</td>
+                    <td className="px-5 py-3 font-mono text-xs text-foreground tracking-widest">
+                      <div className="flex items-center gap-2">
+                        {coupon.code}
+                        <button
+                          onClick={() => navigator.clipboard.writeText(coupon.code).then(() => toast({ title: "Code copié !" }))}
+                          className="text-muted-foreground hover:text-primary transition-colors"
+                          title="Copier le code"
+                        >
+                          <Copy size={12} />
+                        </button>
+                      </div>
+                    </td>
                     <td className="px-3 py-3 font-semibold text-primary">{coupon.valeur.toLocaleString()} F</td>
                     <td className="px-3 py-3">
                       <Badge className={!coupon.utilise ? "bg-green-500/10 text-green-400 border-green-500/20 text-xs gap-1" : "bg-muted text-muted-foreground text-xs gap-1"}>
