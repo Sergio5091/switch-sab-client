@@ -46,23 +46,6 @@ async function cleanupSessionsAuDemarrage() {
       })
       logger.warn(`[startup] ${sessionsBloquees.length} session(s) bloquée(s) nettoyée(s)`)
     }
-
-    // Sessions coupon bloquées
-    if (prisma.sessionAnonymeCoupon) {
-      const couponBloquees = await prisma.sessionAnonymeCoupon.findMany({
-        where: { statut: 'ACTIVE' },
-        include: { poste: true }
-      })
-      if (couponBloquees.length > 0) {
-        await prisma.$transaction(async (tx) => {
-          for (const s of couponBloquees) {
-            await tx.sessionAnonymeCoupon.update({ where: { id: s.id }, data: { statut: 'ARRETEE', fin: new Date() } })
-            await tx.poste.update({ where: { id: s.poste.id }, data: { statut: 'LIBRE' } })
-          }
-        })
-        logger.warn(`[startup] ${couponBloquees.length} session(s) coupon bloquée(s) nettoyée(s)`)
-      }
-    }
   } catch (err) {
     logger.error('[startup cleanup]', err.message)
   }
@@ -96,26 +79,15 @@ if (process.env.NODE_ENV !== 'production') {
   app.post('/api/debug/reset-sessions', verifyJwt, requireRole('ADMIN'), async (req, res) => {
     try {
       const sessions = await prisma.session.findMany({ where: { statut: 'ACTIVE' }, include: { poste: true } })
-      const coupons = prisma.sessionAnonymeCoupon
-        ? await prisma.sessionAnonymeCoupon.findMany({ where: { statut: 'ACTIVE' }, include: { poste: true } })
-        : []
 
       await prisma.$transaction(async (tx) => {
         for (const s of sessions) {
           await tx.session.update({ where: { id: s.id }, data: { statut: 'ARRETEE', fin: new Date() } })
           await tx.poste.update({ where: { id: s.poste.id }, data: { statut: 'LIBRE' } })
         }
-        for (const s of coupons) {
-          await tx.sessionAnonymeCoupon.update({ where: { id: s.id }, data: { statut: 'ARRETEE', fin: new Date() } })
-          await tx.poste.update({ where: { id: s.poste.id }, data: { statut: 'LIBRE' } })
-        }
       })
 
-      return res.json({
-        message: 'Sessions nettoyées',
-        sessionsNormales: sessions.length,
-        sessionsCoupon: coupons.length,
-      })
+      return res.json({ message: 'Sessions nettoyées', sessionsNormales: sessions.length })
     } catch (err) {
       return res.status(500).json({ message: err.message })
     }

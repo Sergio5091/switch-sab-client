@@ -337,40 +337,7 @@ export const listerSessions = async (req, res) => {
       orderBy: { debut: 'desc' }
     })
 
-    // Inclure les sessions coupon actives
-    let sessionsCoupon = []
-    if (prisma.sessionAnonymeCoupon) {
-      const raw = await prisma.sessionAnonymeCoupon.findMany({
-        where: {
-          salleId: req.user.salle_id,
-          statut: { in: ['ACTIVE', 'ARRETEE'] }
-        },
-        include: {
-          coupon: { select: { code: true, valeur: true } },
-          poste: { select: { id: true, nom: true } },
-          duree: { select: { libelle: true, secondes: true, prix: true } },
-        },
-        orderBy: { debut: 'desc' }
-      })
-
-      sessionsCoupon = raw.map(s => ({
-        id: s.id,
-        estCoupon: true,          // flag pour distinguer côté frontend
-        codeCoupon: s.coupon.code,
-        clientId: null,
-        posteId: s.posteId,
-        client: { pseudo: `Coupon ${s.coupon.code}`, telephone: '' },
-        poste: s.poste,
-        duree: s.duree,
-        fin: s.fin,
-        statut: s.statut,
-        estBonus: false,
-        debut: s.debut,
-        soldeRestant: s.soldeRestant,
-      }))
-    }
-
-    return res.json([...sessions, ...sessionsCoupon])
+    return res.json(sessions)
   } catch (err) {
     console.error('[gerant/sessions GET]', err)
     return res.status(500).json({

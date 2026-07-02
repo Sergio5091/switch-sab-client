@@ -172,7 +172,7 @@ export default function ClientHome() {
           </div>
           <div className="bg-gradient-to-br from-orange-500/20 to-orange-500/5 border border-orange-500/30 rounded-2xl p-4">
             <div className="flex items-center gap-1.5 text-xs text-muted-foreground mb-1.5"><Gift size={11} /> Bonus</div>
-            <div className="text-2xl font-bold text-foreground">{Math.floor((data?.bonus?.solde ?? 0) / 60)}</div>
+            <div className="text-2xl font-bold text-foreground">{Math.floor((data?.bonus?.solde ?? 0))}</div>
             <div className="text-xs text-muted-foreground">minutes offertes</div>
           </div>
         </div>

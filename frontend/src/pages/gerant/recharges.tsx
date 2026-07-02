@@ -307,7 +307,7 @@ export default function GerantRecharges() {
 
   // Session active du client sélectionné pour le complément
   const sessionsActiveComplement = activeSessions.filter(
-    (s: any) => String(s.clientId) === complementClientId && !s.estCoupon
+    (s: any) => String(s.clientId) === complementClientId
   );
   const sessionActiveComplement = complementSessionId
     ? activeSessions.find((s: any) => String(s.id) === complementSessionId)

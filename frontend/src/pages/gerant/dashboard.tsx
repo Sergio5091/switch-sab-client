@@ -1,7 +1,7 @@
 import { useState, useEffect, useCallback } from "react";
 import AdminLayout from "@/layouts/AdminLayout";
 import { Button } from "@/components/ui/button";
-import { Monitor, Square, Play, Clock, Ticket } from "lucide-react";
+import { Monitor, Square, Play, Clock } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
 import { Badge } from "@/components/ui/badge";
 import { cn } from "@/lib/utils";
@@ -55,13 +55,9 @@ export default function GerantDashboard() {
     return () => { socket.disconnect(); };
   }, [load]);
 
-  async function handleStop(sessionId: number, posteNom: string, estCoupon?: boolean) {
+  async function handleStop(sessionId: number, posteNom: string) {
     try {
-      if (estCoupon) {
-        await api.post(`/gerant/sessions/coupon/${sessionId}/arreter`);
-      } else {
-        await gerantService.arreterSession(sessionId);
-      }
+      await gerantService.arreterSession(sessionId);
       toast({ title: `${posteNom} arrêté` });
       load();
     } catch (err: any) {
@@ -147,17 +143,14 @@ export default function GerantDashboard() {
                             <span className="text-xs text-muted-foreground">{activeSession.duree?.libelle}</span>
                           </div>
                           <div className="flex items-center gap-1.5">
-                            {activeSession.estCoupon
-                              ? <><Ticket size={11} className="text-orange-400" /><span className="text-xs text-orange-400 font-mono font-medium">{activeSession.codeCoupon}</span></>
-                              : <span className="text-xs text-muted-foreground font-medium truncate">{activeSession.client?.pseudo}</span>
-                            }
+                            <span className="text-xs text-muted-foreground font-medium truncate">{activeSession.client?.pseudo}</span>
                           </div>
                         </div>
                         <Button
                           size="sm"
                           variant="destructive"
                           className="w-full gap-1.5 text-xs"
-                          onClick={() => handleStop(activeSession.id, poste.nom, activeSession.estCoupon)}
+                          onClick={() => handleStop(activeSession.id, poste.nom)}
                           data-testid={`button-stop-poste-${poste.id}`}
                         >
                           <Square size={11} /> Arrêter
