@@ -70,7 +70,7 @@ export const getHome = async (req, res) => {
       bonus: bonusData,
       soldeMonetaire: user.solde ?? 0,
       activeSession:  user.sessions.find(s => s.statut === 'ACTIVE')   ?? null,
-      pausedSession:  user.sessions.find(s => s.statut === 'ARRETEE')  ?? null,
+      pausedSession:  user.sessions.find(s => s.statut === 'ARRETEE' && s.tempsRestant > 0) ?? null,
       recentSessions: user.sessions.filter(s => s.statut === 'TERMINEE')
     })
   } catch (err) {

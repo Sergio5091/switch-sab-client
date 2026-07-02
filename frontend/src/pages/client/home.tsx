@@ -60,6 +60,28 @@ export default function ClientHome() {
   useEffect(() => { reload(); }, []);
   useEffect(() => { const i = setInterval(() => setTick(t => t + 1), 1000); return () => clearInterval(i); }, []);
 
+  // Écouter les événements Socket pour recharger automatiquement
+  useEffect(() => {
+    const socketUrl = new URL(import.meta.env.VITE_API_URL ?? 'http://localhost:3000/api').origin;
+    // Import dynamique pour éviter une erreur si socket.io-client n'est pas dispo
+    import('socket.io-client').then(({ io }) => {
+      const socket = io(socketUrl);
+      socket.on('session:end',  () => reload());
+      socket.on('session:stop', () => reload());
+      return () => socket.disconnect();
+    }).catch(() => {});
+  }, []);
+
+  // Recharger automatiquement quand le timer arrive à 0 (fallback sans socket)
+  useEffect(() => {
+    if (!data?.activeSession) return;
+    const restant = Math.max(0, Math.floor((new Date(data.activeSession.fin).getTime() - Date.now()) / 1000));
+    if (restant === 0) {
+      const t = setTimeout(() => reload(), 2000);
+      return () => clearTimeout(t);
+    }
+  }, [data?.activeSession?.fin, tick]);
+
   useEffect(() => {
     if (!openStart) return;
     api.get('/client/categories').then(r => setCategories(r.data)).catch(console.error);
