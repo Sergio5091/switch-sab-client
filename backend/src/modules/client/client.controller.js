@@ -52,6 +52,23 @@ export const getHome = async (req, res) => {
       return { solde: creditExistant?.solde ?? 0, categorie: cat }
     })
 
+    // Recalculer disponible dynamiquement selon le seuil configuré
+    // (le champ Bonus.disponible peut être obsolète si modifié directement en base)
+    let bonusData = user.bonus
+    if (bonusData && bonusData.solde > 0) {
+      const configBonus = await prisma.configBonus.findUnique({ where: { salleId: user.salleId } })
+      const seuil = configBonus?.seuilDeblocage ?? 0
+      const disponibleCalcule = bonusData.solde >= seuil
+      // Mettre à jour en base si l'état a changé
+      if (disponibleCalcule !== bonusData.disponible) {
+        await prisma.bonus.update({
+          where: { clientId },
+          data: { disponible: disponibleCalcule }
+        })
+        bonusData = { ...bonusData, disponible: disponibleCalcule }
+      }
+    }
+
     return res.json({
       pseudo: user.pseudo,
       credits,
