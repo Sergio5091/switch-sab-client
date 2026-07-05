@@ -5,7 +5,7 @@ export const getPromoConfig = async (req, res) => {
   try {
     const config = await prisma.configBonus.findUnique({
       where: { salleId: req.user.salle_id },
-      select: { reductionInvite: true, bonusParrain: true }
+      select: { reductionInvite: true, bonusParrain: true, bonusFilleul: true, salleId: true }
     })
     if (!config) return res.status(404).json({ message: 'Aucune configuration promo trouvée' })
     return res.json(config)
@@ -17,7 +17,7 @@ export const getPromoConfig = async (req, res) => {
 
 // PATCH /admin/promo/config
 export const modifierPromoConfig = async (req, res) => {
-  const { reductionInvite, bonusParrain } = req.body
+  const { reductionInvite, bonusParrain, bonusFilleul } = req.body
 
   try {
     const config = await prisma.configBonus.upsert({
@@ -25,6 +25,7 @@ export const modifierPromoConfig = async (req, res) => {
       update: {
         ...(reductionInvite !== undefined && { reductionInvite: Number(reductionInvite) }),
         ...(bonusParrain    !== undefined && { bonusParrain:    Number(bonusParrain) }),
+        ...(bonusFilleul    !== undefined && { bonusFilleul:    Number(bonusFilleul) }),
       },
       create: {
         salleId:         req.user.salle_id,
@@ -33,11 +34,14 @@ export const modifierPromoConfig = async (req, res) => {
         validitejours:   30,
         reductionInvite: Number(reductionInvite || 0),
         bonusParrain:    Number(bonusParrain    || 0),
+        bonusFilleul:    Number(bonusFilleul    || 0),
       }
     })
     return res.json({
       reductionInvite: config.reductionInvite,
-      bonusParrain:    config.bonusParrain
+      bonusParrain:    config.bonusParrain,
+      bonusFilleul:    config.bonusFilleul,
+      salleId:         config.salleId,
     })
   } catch (err) {
     console.error('[admin/promo/config PATCH]', err)

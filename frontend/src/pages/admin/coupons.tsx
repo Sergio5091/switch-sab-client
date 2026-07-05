@@ -5,11 +5,12 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
-import { Ticket, Download, CheckCircle2, QrCode, Printer } from "lucide-react";
+import { Ticket, Download, CheckCircle2, QrCode, Printer, Copy } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
 import { Badge } from "@/components/ui/badge";
 import { cn } from "@/lib/utils";
 import { QRCodeSVG } from "qrcode.react";
+import QRCode from "qrcode";
 import adminService, { Coupon } from "@/services/adminService";
 
 const VALEURS = [500, 1000, 2000, 5000];
@@ -75,6 +76,8 @@ export default function AdminCoupons() {
   const [valeur, setValeur] = useState("500");
   const [count, setCount] = useState("10");
   const [selectedCoupon, setSelectedCoupon] = useState<Coupon | null>(null);
+  const printAllRef = useRef<HTMLDivElement>(null);
+  const [printCount, setPrintCount] = useState("40");
 
   useEffect(() => {
     adminService.getCoupons().then(setCoupons).catch(() => toast({ title: "Erreur chargement coupons", variant: "destructive" }));
@@ -93,9 +96,57 @@ export default function AdminCoupons() {
     }
   }
 
+  async function handlePrintBatch(count: number) {
+    const aPrinter = coupons.filter(c => !c.utilise).slice(0, count);
+    const liste = aPrinter.length > 0 ? aPrinter : coupons.slice(0, count);
+    if (liste.length === 0) {
+      toast({ title: "Aucun coupon à imprimer", variant: "destructive" });
+      return;
+    }
+
+    const QRCode = (await import('qrcode')).default;
+    const rows = await Promise.all(
+      liste.map(async c => {
+        const svgString = await QRCode.toString(c.code, {
+          type: 'svg',
+          width: 100,
+          margin: 1,
+          color: { dark: '#000000', light: '#ffffff' }
+        });
+        return `
+          <div class="coupon">
+            <div class="valeur">${c.valeur.toLocaleString()} FCFA</div>
+            <div class="qr">${svgString}</div>
+            <div class="code">${c.code}</div>
+            <div class="label">Switch SAB</div>
+          </div>`;
+      })
+    );
+
+    const win = window.open("", "_blank");
+    if (!win) return;
+    win.document.write(`
+      <html><head><title>Coupons Switch SAB</title>
+      <style>
+        @page { size: A4; margin: 8mm; }
+        * { box-sizing: border-box; }
+        body { margin: 0; font-family: monospace; }
+        .grid { display: grid; grid-template-columns: repeat(4, 1fr); gap: 3mm; width: 100%; }
+        .coupon { border: 1.5px dashed #f97316; border-radius: 6px; padding: 6px 4px; text-align: center; page-break-inside: avoid; display: flex; flex-direction: column; align-items: center; gap: 3px; }
+        .valeur { font-size: 12px; font-weight: bold; color: #f97316; }
+        .qr svg { width: 90px; height: 90px; display: block; }
+        .code { font-size: 10px; font-weight: bold; letter-spacing: 1.5px; }
+        .label { font-size: 8px; color: #888; }
+      </style></head>
+      <body><div class="grid">${rows.join("")}</div>
+      <script>window.onload = function() { window.print(); window.close(); }<\/script>
+      </body></html>`);
+    win.document.close();
+    toast({ title: `${liste.length} coupons avec QR envoyés à l'imprimante` });
+  }
+
   const actifs = coupons.filter(c => !c.utilise);
   const utilises = coupons.filter(c => c.utilise);
-
   return (
     <AdminLayout>
       <div className="p-6 space-y-6">
@@ -128,6 +179,24 @@ export default function AdminCoupons() {
               <Ticket size={15} /> Générer
             </Button>
           </div>
+          {coupons.length > 0 && (
+            <div className="flex items-center gap-2 pt-2 border-t border-border flex-wrap">
+              <span className="text-xs text-muted-foreground">Imprimer :</span>
+              <Input
+                type="number"
+                min={1}
+                max={actifs.length}
+                value={printCount}
+                onChange={e => setPrintCount(e.target.value)}
+                className="w-20 h-8 text-xs"
+                placeholder="Qté"
+              />
+              <Button variant="outline" size="sm" onClick={() => handlePrintBatch(Number(printCount) || actifs.length)} className="gap-1.5 text-xs">
+                <Printer size={13} /> Imprimer
+              </Button>
+              <span className="text-xs text-muted-foreground">({actifs.length} actifs disponibles)</span>
+            </div>
+          )}
         </div>
 
         {/* Liste */}
@@ -146,9 +215,20 @@ export default function AdminCoupons() {
                 </tr>
               </thead>
               <tbody className="divide-y divide-border">
-                {coupons.slice().reverse().map(coupon => (
+                {[...actifs, ...utilises].map(coupon => (
                   <tr key={coupon.id} className={cn("hover:bg-muted/20 transition-colors", coupon.utilise && "opacity-50")} data-testid={`row-coupon-${coupon.id}`}>
-                    <td className="px-5 py-3 font-mono text-xs text-foreground tracking-widest">{coupon.code}</td>
+                    <td className="px-5 py-3 font-mono text-xs text-foreground tracking-widest">
+                      <div className="flex items-center gap-2">
+                        {coupon.code}
+                        <button
+                          onClick={e => { e.stopPropagation(); navigator.clipboard.writeText(coupon.code).then(() => toast({ title: "Code copié !" })); }}
+                          className="text-muted-foreground hover:text-primary transition-colors"
+                          title="Copier le code"
+                        >
+                          <Copy size={12} />
+                        </button>
+                      </div>
+                    </td>
                     <td className="px-3 py-3 font-semibold text-primary">{coupon.valeur.toLocaleString()} F</td>
                     <td className="px-3 py-3">
                       <Badge className={!coupon.utilise ? "bg-green-500/10 text-green-400 border-green-500/20 text-xs gap-1" : "bg-muted text-muted-foreground text-xs gap-1"}>

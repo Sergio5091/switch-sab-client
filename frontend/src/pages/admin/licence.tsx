@@ -24,6 +24,9 @@ export default function LicencePage() {
     }
   }, [licenceStatut, currentUser, setLocation]);
 
+  // Seuls admin et gérant peuvent accéder à cette page
+  const canAccess = currentUser?.role === "admin" || currentUser?.role === "gerant";
+
   const handleFileUpload = (event: React.ChangeEvent<HTMLInputElement>) => {
     const file = event.target.files?.[0];
     if (!file) return;
@@ -75,7 +78,7 @@ export default function LicencePage() {
           <div className="space-y-1.5">
             <h1 className="text-2xl font-bold text-foreground">Activation de licence</h1>
             <p className="text-sm text-muted-foreground">
-              Importez le fichier JSON de licence généré par le Super Admin.
+              Importez la licence JSON générée par le Super Admin.
             </p>
           </div>
 
@@ -123,10 +126,10 @@ export default function LicencePage() {
                 </div>
                 <div className="space-y-1">
                   <div className="text-sm font-medium text-foreground">
-                    {jsonContent ? "Fichier chargé" : "Importer le fichier JSON"}
+                    {jsonContent ? "Licence chargée" : "Importer la licence"}
                   </div>
                   <div className="text-xs text-muted-foreground">
-                    Cliquez pour sélectionner ou glissez le fichier
+                    Cliquez pour sélectionner ou glissez le fichier de licence
                   </div>
                 </div>
               </label>
@@ -140,7 +143,7 @@ export default function LicencePage() {
                 </div>
                 <div className="text-xs text-muted-foreground space-y-1 font-mono">
                   <div>ID: {jsonContent.licenceId}</div>
-                  <div>Salle: {jsonContent.salleId}</div>
+                  <div>Salle: {jsonContent.nomSalle}</div>
                   <div>Machine: {jsonContent.machineId}</div>
                   <div>Expire: {new Date(jsonContent.expiresAt).toLocaleDateString()}</div>
                 </div>

@@ -34,6 +34,7 @@ const adminNav: NavItem[] = [
   { href: "/admin/coupons", label: "Coupons", icon: Ticket },
   { href: "/admin/promotions", label: "Promotions", icon: Megaphone },
   { href: "/admin/rapports", label: "Rapports", icon: BarChart2 },
+  { href: "/admin/salle", label: "Config salle", icon: Building2 },
 ];
 
 const gerantNav: NavItem[] = [
@@ -119,14 +120,25 @@ export default function AdminLayout({ children }: { children: React.ReactNode })
       >
         {/* Logo */}
         <div className="flex items-center gap-3 px-5 py-5 border-b border-sidebar-border">
-          <div className="w-9 h-9 rounded-lg bg-primary flex items-center justify-center flex-shrink-0">
-            <Gamepad2 size={18} className="text-white" />
-          </div>
+          <img
+            src="/Image-removebg-preview.png"
+            alt="Logo"
+            className="w-9 h-9 rounded-lg object-cover flex-shrink-0 shadow-lg"
+          />
+
           <div>
-            <div className="font-bold text-foreground text-sm tracking-wide">SWITCH SAB</div>
-            <div className={cn("text-xs font-medium", roleColor)}>{roleLabel}</div>
+            <div className="font-bold text-foreground text-sm tracking-wide">
+              SWITCH SAB
+            </div>
+            <div className={cn("text-xs font-medium", roleColor)}>
+              {roleLabel}
+            </div>
           </div>
-          <button className="ml-auto lg:hidden text-muted-foreground" onClick={() => setOpen(false)}>
+
+          <button
+            className="ml-auto lg:hidden text-muted-foreground"
+            onClick={() => setOpen(false)}
+          >
             <X size={18} />
           </button>
         </div>
@@ -142,7 +154,7 @@ export default function AdminLayout({ children }: { children: React.ReactNode })
         {/* Nav */}
         <nav className="flex-1 overflow-y-auto py-3 px-3">
           {nav.map(item => {
-            const active = location.startsWith(item.href);
+            const active = item.href === location || location.startsWith(item.href + "/");
             return (
               <Link key={item.href} href={item.href}>
                 <div

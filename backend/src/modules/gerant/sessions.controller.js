@@ -1,5 +1,6 @@
 import prisma from '../../services/prismaClient.js'
 import * as switchService from '../../switch/switchService.js'
+import * as zigbee from '../../switch/zigbeeSwitch.js'
 import { getIO } from '../../socket.js'
 import logger from '../../config/logger.js'
 
@@ -124,13 +125,26 @@ export const demarrerSession = async (req, res) => {
       creditSource = credit
     }
 
-    // 5. Trouver un poste libre dans la catégorie
-    const posteLibre = await prisma.poste.findFirst({
-      where: {
-        categorieId: Number(categorieId),
-        statut: 'LIBRE'
+    // 5. Trouver le poste — priorité au choix du gérant, sinon premier libre
+    const { posteId } = req.body
+    let posteLibre
+
+    if (posteId) {
+      posteLibre = await prisma.poste.findFirst({
+        where: {
+          id: Number(posteId),
+          categorieId: Number(categorieId),
+          statut: 'LIBRE'
+        }
+      })
+      if (!posteLibre) {
+        return res.status(400).json({ message: 'Le poste choisi est indisponible ou occupé' })
       }
-    })
+    } else {
+      posteLibre = await prisma.poste.findFirst({
+        where: { categorieId: Number(categorieId), statut: 'LIBRE' }
+      })
+    }
 
     if (!posteLibre) {
       return res.status(400).json({
@@ -178,12 +192,26 @@ export const demarrerSession = async (req, res) => {
       return newSession
     })
 
-    // 7. Appeler switch réel
+    // 7. Appeler switch réel — allumer + verrouiller + countdown
     try {
       await switchService.allumerPoste(posteLibre.id)
     } catch (err) {
       logger.warn(`Impossible d'allumer poste ${posteLibre.id}:`, err.message)
-      // On continue quand même (mock mode)
+    }
+
+    // child_lock LOCK + countdown matériel (sécurité si backend crash)
+    // Ces appels sont non-bloquants — une erreur ne doit pas planter la session
+    if (process.env.USE_MOCK_SWITCH !== 'true') {
+      Promise.allSettled([
+        zigbee.verrouillerPoste(posteLibre.id),
+        zigbee.programmerArret(posteLibre.id, duree.secondes),
+      ]).then((results) => {
+        results.forEach((r, i) => {
+          if (r.status === 'rejected') {
+            logger.warn(`[zigbee] Action démarrage ${i} échouée :`, r.reason?.message)
+          }
+        })
+      })
     }
 
     // 8. Émettre Socket.io session:start
@@ -260,27 +288,35 @@ export const arreterSession = async (req, res) => {
 
     // 3. TRANSACTION : mettre à jour session + libérer poste
     await prisma.$transaction(async (tx) => {
-      // Mettre à jour session en ARRETEE
+      const tempsRestant = Math.max(0, Math.floor((new Date(session.fin).getTime() - Date.now()) / 1000))
       await tx.session.update({
         where: { id: sessionId },
-        data: {
-          statut: 'ARRETEE',
-          fin: new Date()
-        }
+        data: { statut: 'ARRETEE', fin: new Date(), tempsRestant }
       })
-
-      // Libérer poste
       await tx.poste.update({
         where: { id: session.poste.id },
         data: { statut: 'LIBRE' }
       })
     })
 
-    // 4. Éteindre poste
+    // 4. Éteindre poste + déverrouiller + annuler countdown
     try {
       await switchService.eteindrePoste(session.poste.id)
     } catch (err) {
       logger.warn(`Impossible d'éteindre poste ${session.poste.id}:`, err.message)
+    }
+
+    if (process.env.USE_MOCK_SWITCH !== 'true') {
+      Promise.allSettled([
+        zigbee.deverrouillerPoste(session.poste.id),
+        zigbee.annulerCountdown(session.poste.id),
+      ]).then((results) => {
+        results.forEach((r, i) => {
+          if (r.status === 'rejected') {
+            logger.warn(`[zigbee] Action arrêt ${i} échouée :`, r.reason?.message)
+          }
+        })
+      })
     }
 
     // 5. Émettre Socket.io
@@ -319,8 +355,8 @@ export const listerSessions = async (req, res) => {
         clientId: true,
         posteId: true,
         client: { select: { pseudo: true, telephone: true } },
-        poste: { select: { id: true, nom: true } },
-        duree: { select: { libelle: true, secondes: true, prix: true } },
+        poste: { select: { id: true, nom: true, categorieId: true } },
+        duree: { select: { libelle: true, secondes: true, prix: true, categorieId: true } },
         fin: true,
         statut: true,
         estBonus: true,
@@ -389,75 +425,72 @@ async function endSessionAuto(sessionId, posteId) {
   try {
     const io = getIO()
 
-    // TRANSACTION : marquer TERMINEE + libérer poste
     await prisma.$transaction(async (tx) => {
+      // Inclure duree et client (pas bonus — relation inexistante sur Session)
       const session = await tx.session.findUnique({
         where: { id: sessionId },
-        include: { client: true, bonus: true }
-      })
-
-      if (!session) return
-
-      // Mettre à jour session
-      await tx.session.update({
-        where: { id: sessionId },
-        data: {
-          statut: 'TERMINEE',
-          tempsRestant: 0,
-          fin: new Date()
+        include: {
+          client: { select: { id: true, pseudo: true, salleId: true } },
+          duree: { select: { secondes: true } }
         }
       })
 
-      // Libérer poste
+      if (!session || session.statut !== 'ACTIVE') return
+
+      await tx.session.update({
+        where: { id: sessionId },
+        data: { statut: 'TERMINEE', tempsRestant: 0, fin: new Date() }
+      })
+
       await tx.poste.update({
         where: { id: posteId },
         data: { statut: 'LIBRE' }
       })
 
-      // Calculer et créditer bonus (si applicable)
-      const configBonus = await tx.configBonus.findUnique({
-        where: { salleId: session.client.salleId }
-      })
+      // Bonus — uniquement si session normale (pas bonus)
+      if (!session.estBonus && session.duree?.secondes) {
+        const configBonus = await tx.configBonus.findUnique({
+          where: { salleId: session.client.salleId }
+        })
 
-      if (configBonus && !session.estBonus) {
-        // Calculer bonus : ratioSecondes par heure jouée
-        const heuresJouees = (session.duree.secondes - 0) / 3600
-        const bonusGagne = Math.floor(configBonus.ratioSecondes * heuresJouees)
+        if (configBonus) {
+          const heuresJouees = session.duree.secondes / 3600
+          const bonusGagne = Math.floor(configBonus.ratioSecondes * heuresJouees)
 
-        if (bonusGagne > 0) {
-          const bonus = await tx.bonus.findUnique({
-            where: { clientId: session.clientId }
-          })
-
-          if (bonus) {
-            const nouveauSolde = bonus.solde + bonusGagne
-            const disponible =
-              bonus.disponible || nouveauSolde >= configBonus.seuilDeblocage
-
-            await tx.bonus.update({
-              where: { id: bonus.id },
-              data: {
-                solde: nouveauSolde,
-                disponible,
-                derniereActivite: new Date()
-              }
+          if (bonusGagne > 0) {
+            const bonus = await tx.bonus.findUnique({
+              where: { clientId: session.clientId }
             })
+
+            if (bonus) {
+              const nouveauSolde = bonus.solde + bonusGagne
+              await tx.bonus.update({
+                where: { id: bonus.id },
+                data: {
+                  solde: nouveauSolde,
+                  disponible: bonus.disponible || nouveauSolde >= configBonus.seuilDeblocage,
+                  derniereActivite: new Date()
+                }
+              })
+            }
           }
         }
       }
     })
 
-    // Éteindre poste
-    try {
-      await switchService.eteindrePoste(posteId)
-    } catch (err) {
-      logger.warn(`Impossible d'éteindre poste ${posteId}:`, err.message)
+    try { await switchService.eteindrePoste(posteId) } catch (e) {
+      logger.warn(`Impossible d'éteindre poste ${posteId}:`, e.message)
     }
 
-    // Émettre Socket.io
-    io.emit('session:end', { sessionId, posteId })
+    if (process.env.USE_MOCK_SWITCH !== 'true') {
+      Promise.allSettled([
+        zigbee.deverrouillerPoste(posteId),
+        zigbee.annulerCountdown(posteId),
+      ]).catch(() => {})
+    }
 
-    logger.info(`Session terminée automatiquement : ${sessionId}`)
+    io.emit('session:end', { sessionId, posteId })
+    logger.info(`Session ${sessionId} terminée automatiquement`)
   } catch (err) {
     logger.error(`Erreur fin auto session ${sessionId}:`, err.message)
   }
@@ -466,3 +499,77 @@ async function endSessionAuto(sessionId, posteId) {
 // ─── Exporter pour utilisation externe ─────────────────────────────────
 
 export const getSessionTimeouts = () => sessionTimeouts
+
+// ─── POST /gerant/sessions/:id/prolonger → Prolonger une session active ──────
+// Ajoute du temps à une session en cours (modifie session.fin + relance le timer)
+
+export const prolongerSession = async (req, res) => {
+  const sessionId = Number(req.params.id)
+  const { dureeId } = req.body
+
+  if (!dureeId) return res.status(400).json({ message: 'dureeId requis' })
+
+  try {
+    const session = await prisma.session.findFirst({
+      where: { id: sessionId, statut: 'ACTIVE', gerant: { salleId: req.user.salle_id } },
+      include: { client: true, poste: true, duree: true }
+    })
+    if (!session) return res.status(404).json({ message: 'Session active introuvable' })
+
+    const dureeSupp = await prisma.duree.findFirst({
+      where: { id: Number(dureeId), categorieId: session.poste.categorieId }
+    })
+    if (!dureeSupp) return res.status(404).json({ message: 'Durée introuvable' })
+
+    // Vérifier que le client a le crédit suffisant
+    const credit = await prisma.credit.findFirst({
+      where: { clientId: session.clientId, categorieId: session.poste.categorieId }
+    })
+    if (!credit || credit.solde < dureeSupp.secondes) {
+      return res.status(400).json({ message: 'Crédit insuffisant pour prolonger' })
+    }
+
+    // Calculer la nouvelle fin
+    const tempsRestantActuel = Math.max(0, Math.floor((new Date(session.fin).getTime() - Date.now()) / 1000))
+    const nouvelleFin = new Date(Date.now() + (tempsRestantActuel + dureeSupp.secondes) * 1000)
+
+    await prisma.$transaction(async (tx) => {
+      // Débiter le crédit
+      await tx.credit.update({
+        where: { id: credit.id },
+        data: { solde: credit.solde - dureeSupp.secondes }
+      })
+      // Mettre à jour la fin de session
+      await tx.session.update({
+        where: { id: sessionId },
+        data: { fin: nouvelleFin, tempsRestant: tempsRestantActuel + dureeSupp.secondes }
+      })
+    })
+
+    // Annuler l'ancien timer et en lancer un nouveau
+    if (sessionTimeouts[sessionId]) {
+      clearTimeout(sessionTimeouts[sessionId])
+      delete sessionTimeouts[sessionId]
+    }
+    scheduleSessionEnd(sessionId, session.poste.id, (tempsRestantActuel + dureeSupp.secondes) * 1000)
+
+    // Notifier le frontend
+    getIO().emit('session:prolonged', {
+      sessionId,
+      posteId: session.poste.id,
+      nouvelleFin,
+      dureeAjoutee: dureeSupp.libelle
+    })
+
+    logger.info(`Session ${sessionId} prolongée de ${dureeSupp.libelle} pour ${session.client.pseudo}`)
+
+    return res.json({
+      message: `Session prolongée de ${dureeSupp.libelle}`,
+      nouvelleFin,
+      tempsRestant: tempsRestantActuel + dureeSupp.secondes
+    })
+  } catch (err) {
+    console.error('[gerant/sessions/:id/prolonger POST]', err)
+    return res.status(500).json({ message: `Erreur serveur : ${err.message}` })
+  }
+}

@@ -19,7 +19,7 @@ const schema = z.object({
 type FormValues = z.infer<typeof schema>;
 
 const DEMO_ACCOUNTS = [
-  { label: "Admin", identifiant: "admin@switch.bj", color: "text-blue-500 dark:text-blue-400" },
+  { label: "Admin", identifiant: "admin@switchsab.local", color: "text-blue-500 dark:text-blue-400" },
   { label: "Gérant", identifiant: "gerant1", color: "text-green-500 dark:text-green-400" },
   { label: "Client", identifiant: "KevG", color: "text-purple-500 dark:text-purple-400" },
 ];
@@ -143,42 +143,34 @@ export default function LoginPage() {
   const [error, setError] = useState("");
   const [loading, setLoading] = useState(false);
 
-  if (currentUser) {
-    const dest = currentUser.role === "admin" ? "/admin/dashboard"
-      : currentUser.role === "gerant" ? "/gerant/dashboard"
-      : "/client/home";
-    setLocation(dest);
-    return null;
-  }
-
   const form = useForm<FormValues>({
     resolver: zodResolver(schema),
     defaultValues: { identifiant: "", password: "admin123" },
   });
 
-  function onSubmit(values: FormValues) {
+  async function onSubmit(values: FormValues) {
     setError("");
     setLoading(true);
-    login(values.identifiant, values.password)
-      .then((result) => {
-        setLoading(false);
-        if (result.success && result.licenceRequired) {
-          setLocation("/admin/licence");
-        } else if (result.success) {
-          toast({ title: "Connexion réussie" });
-          // Redirection selon le rôle (currentUser est déjà mis à jour dans login())
-          const user = JSON.parse(localStorage.getItem("switch_sab_user") || "{}");
-          const dest = user.role === "admin" ? "/admin/dashboard"
-            : user.role === "gerant" ? "/gerant/dashboard"
-            : "/client/home";
-          setLocation(dest);
-        }
-      })
-      .catch((err) => {
-        setLoading(false);
-        const errorMessage = err.message || "Erreur de connexion. Vérifiez que le serveur est démarré.";
-        setError(errorMessage);
-      });
+    try {
+      const result = await login(values.identifiant, values.password);
+      if (result.success && result.salleRequired) {
+        setLocation("/setup/salle");
+      } else if (result.success && result.licenceRequired) {
+        setLocation("/admin/licence");
+      } else if (result.success) {
+        toast({ title: "Connexion réussie" });
+        const user = JSON.parse(localStorage.getItem("switch_sab_user") || "{}");
+        const dest = user.role === "admin" ? "/admin/dashboard"
+          : user.role === "gerant" ? "/gerant/dashboard"
+          : "/client/home";
+        setLocation(dest);
+      }
+    } catch (err: any) {
+      const errorMessage = err.message || "Erreur de connexion. Vérifiez que le serveur est démarré.";
+      setError(errorMessage);
+    } finally {
+      setLoading(false);
+    }
   }
 
   function fillDemo(identifiant: string) {

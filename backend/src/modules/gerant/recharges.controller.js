@@ -57,30 +57,24 @@ export const creerRecharge = async (req, res) => {
       })
     }
 
-    // Trouver ou créer le crédit pour cette catégorie
-    let credit = await prisma.credit.findFirst({
-      where: {
-        clientId: Number(clientId),
-        categorieId: Number(categorieId)
-      }
-    })
-
-    if (!credit) {
-      credit = await prisma.credit.create({
-        data: {
+    // TRANSACTION : créer ou mettre à jour le crédit + enregistrer transaction
+    const recharge = await prisma.$transaction(async (tx) => {
+      // Upsert : crée la ligne si elle n'existe pas, sinon incrémente
+      await tx.credit.upsert({
+        where: {
+          clientId_categorieId: {
+            clientId: Number(clientId),
+            categorieId: Number(categorieId)
+          }
+        },
+        create: {
           clientId: Number(clientId),
           categorieId: Number(categorieId),
-          solde: 0
+          solde: duree.secondes
+        },
+        update: {
+          solde: { increment: duree.secondes }
         }
-      })
-    }
-
-    // TRANSACTION : créditer + enregistrer transaction
-    const recharge = await prisma.$transaction(async (tx) => {
-      // Créditer
-      await tx.credit.update({
-        where: { id: credit.id },
-        data: { solde: credit.solde + duree.secondes }
       })
 
       // Enregistrer transaction
@@ -103,12 +97,6 @@ export const creerRecharge = async (req, res) => {
     return res.status(201).json({
       message: 'Recharge effectuée',
       transaction: recharge,
-      creditUpdated: {
-        clientId: Number(clientId),
-        categorieId: Number(categorieId),
-        ancienSolde: credit.solde,
-        nouveauSolde: credit.solde + duree.secondes
-      }
     })
   } catch (err) {
     console.error('[gerant/recharges POST]', err)
@@ -314,5 +302,49 @@ export const validerRecharge = async (req, res) => {
     return res.status(500).json({
       message: 'Erreur serveur'
     })
+  }
+}
+
+// ─── POST /gerant/recharges/coupon → Gérant applique un coupon pour un client ──
+
+export const appliquerCouponGerant = async (req, res) => {
+  const { code, clientId } = req.body
+
+  if (!code || !clientId) {
+    return res.status(400).json({ message: 'Code coupon et clientId requis' })
+  }
+
+  try {
+    const client = await prisma.user.findFirst({
+      where: { id: Number(clientId), salleId: req.user.salle_id, role: 'CLIENT' }
+    })
+    if (!client) return res.status(404).json({ message: 'Client introuvable' })
+
+    const coupon = await prisma.coupon.findFirst({
+      where: { code: code.trim().toUpperCase(), salleId: req.user.salle_id, utilise: false }
+    })
+    if (!coupon) return res.status(404).json({ message: 'Coupon invalide ou déjà utilisé' })
+
+    await prisma.$transaction(async (tx) => {
+      await tx.coupon.update({ where: { id: coupon.id }, data: { utilise: true } })
+      // Créditer User.solde — les coupons ne touchent que le solde FCFA
+      await tx.user.update({
+        where: { id: Number(clientId) },
+        data: { solde: { increment: coupon.valeur } }
+      })
+      await tx.transaction.create({
+        data: { clientId: Number(clientId), montant: coupon.valeur, type: 'RECHARGE_COUPON', gerantId: req.user.id }
+      })
+    })
+
+    logger.info(`Coupon ${coupon.code} (${coupon.valeur}F) → client ${client.pseudo} : +${coupon.valeur.toLocaleString()} FCFA sur solde`)
+
+    return res.json({
+      message: `Coupon appliqué — +${coupon.valeur.toLocaleString()} FCFA crédités sur le solde de ${client.pseudo}`,
+      valeur: coupon.valeur,
+    })
+  } catch (err) {
+    console.error('[gerant/recharges/coupon POST]', err)
+    return res.status(500).json({ message: 'Erreur serveur' })
   }
 }

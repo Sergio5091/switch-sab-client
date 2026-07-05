@@ -18,6 +18,10 @@
     "dotenv": "^17.4.2",
     "express": "^5.2.1",
     "jsonwebtoken": "^9.0.3",
+    "libphonenumber-js": "^1.13.7",
+    "mqtt": "^5.15.1",
+    "node-cron": "^4.5.0",
+    "nodemailer": "^9.0.1",
     "socket.io": "^4.8.3"
   },
   "devDependencies": {

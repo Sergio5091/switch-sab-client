@@ -1,56 +1,251 @@
-const comptes = [
-  { role: 'Admin',    couleur: 'orange',  pseudo: 'admin',   telephone: '+22900000001', mdp: 'admin123'  },
-  { role: 'Gérant 1', couleur: 'purple',  pseudo: 'gerant1', telephone: '+22900000002', mdp: 'gerant123' },
-  { role: 'Gérant 2', couleur: 'purple',  pseudo: 'gerant2', telephone: '+22900000003', mdp: 'gerant123' },
-  { role: 'Client',   couleur: 'green',   pseudo: 'kofi',    telephone: '+22900000004', mdp: 'client123' },
-  { role: 'Client',   couleur: 'green',   pseudo: 'amina',   telephone: '+22900000005', mdp: 'client123' },
-]
+import { Switch, Route, Router as WouterRouter, useLocation, Redirect } from "wouter";
+import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
+import { Toaster } from "@/components/ui/toaster";
+import { TooltipProvider } from "@/components/ui/tooltip";
+import { AppProvider, useApp } from "@/contexts/AppContext";
+import { ThemeProvider } from "@/contexts/ThemeContext";
+import { ShieldAlert } from "lucide-react";
 
-const badge: Record<string, string> = {
-  orange: 'bg-orange-100 text-orange-700',
-  purple: 'bg-purple-100 text-purple-700',
-  green:  'bg-green-100 text-green-700',
+import LoginPage from "@/pages/login";
+import LicencePage from "@/pages/admin/licence";
+import SetupSallePage from "@/pages/setup/salle";
+import NotFound from "@/pages/not-found";
+
+import AdminDashboard from "@/pages/admin/dashboard";
+import AdminCategories from "@/pages/admin/categories";
+import AdminDurees from "@/pages/admin/durees";
+import AdminPostes from "@/pages/admin/postes";
+import AdminGerants from "@/pages/admin/gerants";
+import AdminBonus from "@/pages/admin/bonus";
+import AdminPromo from "@/pages/admin/promo";
+import AdminCoupons from "@/pages/admin/coupons";
+import AdminPromotions from "@/pages/admin/promotions";
+import AdminRapports from "@/pages/admin/rapports";
+import AdminSalle from "@/pages/admin/salle";
+
+import GerantDashboard from "@/pages/gerant/dashboard";
+import GerantSessionNew from "@/pages/gerant/session-new";
+import GerantClients from "@/pages/gerant/clients";
+import GerantRecharges from "@/pages/gerant/recharges";
+import GerantCoupons from "@/pages/gerant/coupons";
+import GerantRapport from "@/pages/gerant/rapport";
+
+import ClientHome from "@/pages/client/home";
+import ClientSession from "@/pages/client/session";
+import ClientCoupon from "@/pages/client/coupon";
+
+const queryClient = new QueryClient();
+
+function FraudeAlert() {
+  const { fraudeDetectee, messageFraude, logout, resetFraude } = useApp();
+  const [, setLocation] = useLocation();
+  if (!fraudeDetectee) return null;
+
+  function handleActiverLicence() {
+    resetFraude();
+    setLocation("/admin/licence");
+  }
+
+  return (
+    <div className="fixed inset-0 z-[9999] flex items-center justify-center bg-black/70 backdrop-blur-sm">
+      <div className="bg-card border-2 border-destructive rounded-2xl p-6 max-w-md w-full mx-4 shadow-2xl">
+        <div className="flex items-start gap-4">
+          <div className="w-12 h-12 rounded-xl bg-destructive/20 flex items-center justify-center flex-shrink-0">
+            <ShieldAlert size={24} className="text-destructive" />
+          </div>
+          <div className="flex-1">
+            <h2 className="text-lg font-bold text-destructive mb-1">
+              ⚠️ Tentative de fraude détectée
+            </h2>
+            <p className="text-sm text-muted-foreground leading-relaxed">
+              {messageFraude}
+            </p>
+            <p className="text-xs text-muted-foreground mt-3 border-t border-border pt-3">
+              Cette licence a été corrompue. Importez une nouvelle licence valide ou contactez votre Super Admin.
+            </p>
+          </div>
+        </div>
+        <div className="mt-5 flex gap-2">
+          <button
+            onClick={handleActiverLicence}
+            className="flex-1 py-2.5 rounded-xl bg-primary text-white text-sm font-semibold hover:bg-primary/90 transition-colors"
+          >
+            Activer une nouvelle licence
+          </button>
+          <button
+            onClick={logout}
+            className="px-4 py-2.5 rounded-xl border border-border text-sm text-muted-foreground hover:text-destructive hover:border-destructive/30 transition-colors"
+          >
+            Déconnexion
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function RoleRedirect() {
+  const { currentUser, licenceStatut, salleConfiguree, isLoading } = useApp();
+
+  if (isLoading) return null;
+  if (!currentUser) return <Redirect to="/login" />;
+
+  if (currentUser.role === "admin" && salleConfiguree === false) {
+    return <Redirect to="/setup/salle" />;
+  }
+
+  if (licenceStatut !== null && licenceStatut.statut !== "ACTIVE") {
+    return <Redirect to="/admin/licence" />;
+  }
+
+  if (licenceStatut === null) return null;
+
+  switch (currentUser.role) {
+    case "admin":  return <Redirect to="/admin/dashboard" />;
+    case "gerant": return <Redirect to="/gerant/dashboard" />;
+    case "client": return <Redirect to="/client/home" />;
+    default:       return <Redirect to="/login" />;
+  }
+}
+
+function ProtectedRoute({
+  component: Component,
+  roles,
+}: {
+  component: React.ComponentType;
+  roles: string[];
+}) {
+  const { currentUser, licenceStatut, isLoading } = useApp();
+
+  if (isLoading) return null;
+  if (!currentUser) return <Redirect to="/login" />;
+  if (!roles.includes(currentUser.role)) return <RoleRedirect />;
+
+  if (licenceStatut !== null && licenceStatut.statut !== "ACTIVE") {
+    return <Redirect to="/admin/licence" />;
+  }
+
+  if (licenceStatut === null) return null;
+
+  return <Component />;
+}
+
+function LicenseRequiredRoute({ component: Component }: { component: React.ComponentType }) {
+  const { currentUser, isLoading } = useApp();
+  if (isLoading) return null;
+  if (!currentUser) return <Redirect to="/login" />;
+  return <Component />;
+}
+
+function LoginGuard() {
+  const { currentUser, isLoading } = useApp();
+  const [location] = useLocation();
+  if (isLoading) return null;
+  if (currentUser && location === "/login") return <RoleRedirect />;
+  return <LoginPage />;
+}
+
+function Router() {
+  return (
+    <Switch>
+      <Route path="/" component={RoleRedirect} />
+      <Route path="/login" component={LoginGuard} />
+
+      {/* Setup première installation */}
+      <Route path="/setup/salle" component={SetupSallePage} />
+
+      {/* Licence — accessible même si licence invalide */}
+      <Route path="/admin/licence">
+        {() => <LicenseRequiredRoute component={LicencePage} />}
+      </Route>
+
+      {/* Admin */}
+      <Route path="/admin/dashboard">
+        {() => <ProtectedRoute component={AdminDashboard} roles={["admin"]} />}
+      </Route>
+      <Route path="/admin/categories">
+        {() => <ProtectedRoute component={AdminCategories} roles={["admin"]} />}
+      </Route>
+      <Route path="/admin/categories/:id/durees">
+        {() => <ProtectedRoute component={AdminDurees} roles={["admin"]} />}
+      </Route>
+      <Route path="/admin/postes">
+        {() => <ProtectedRoute component={AdminPostes} roles={["admin"]} />}
+      </Route>
+      <Route path="/admin/gerants">
+        {() => <ProtectedRoute component={AdminGerants} roles={["admin"]} />}
+      </Route>
+      <Route path="/admin/bonus">
+        {() => <ProtectedRoute component={AdminBonus} roles={["admin"]} />}
+      </Route>
+      <Route path="/admin/promo">
+        {() => <ProtectedRoute component={AdminPromo} roles={["admin"]} />}
+      </Route>
+      <Route path="/admin/coupons">
+        {() => <ProtectedRoute component={AdminCoupons} roles={["admin"]} />}
+      </Route>
+      <Route path="/admin/promotions">
+        {() => <ProtectedRoute component={AdminPromotions} roles={["admin"]} />}
+      </Route>
+      <Route path="/admin/rapports">
+        {() => <ProtectedRoute component={AdminRapports} roles={["admin"]} />}
+      </Route>
+      <Route path="/admin/salle">
+        {() => <ProtectedRoute component={AdminSalle} roles={["admin"]} />}
+      </Route>
+
+      {/* Gérant */}
+      <Route path="/gerant/dashboard">
+        {() => <ProtectedRoute component={GerantDashboard} roles={["gerant"]} />}
+      </Route>
+      <Route path="/gerant/session/new">
+        {() => <ProtectedRoute component={GerantSessionNew} roles={["gerant"]} />}
+      </Route>
+      <Route path="/gerant/clients">
+        {() => <ProtectedRoute component={GerantClients} roles={["gerant"]} />}
+      </Route>
+      <Route path="/gerant/recharges">
+        {() => <ProtectedRoute component={GerantRecharges} roles={["gerant"]} />}
+      </Route>
+      <Route path="/gerant/coupons">
+        {() => <ProtectedRoute component={GerantCoupons} roles={["gerant"]} />}
+      </Route>
+      <Route path="/gerant/rapport">
+        {() => <ProtectedRoute component={GerantRapport} roles={["gerant"]} />}
+      </Route>
+
+      {/* Client */}
+      <Route path="/client/home">
+        {() => <ProtectedRoute component={ClientHome} roles={["client"]} />}
+      </Route>
+      <Route path="/client/session">
+        {() => <ProtectedRoute component={ClientSession} roles={["client"]} />}
+      </Route>
+      <Route path="/client/coupon">
+        {() => <ProtectedRoute component={ClientCoupon} roles={["client"]} />}
+      </Route>
+
+      <Route component={NotFound} />
+    </Switch>
+  );
 }
 
 function App() {
   return (
-    <div className="min-h-screen bg-gray-900 flex items-center justify-center p-4">
-      <div className="bg-white rounded-2xl p-10 shadow-xl w-full max-w-lg">
-
-        {/* Header */}
-        <h1 className="text-3xl font-bold text-gray-900 mb-1 text-center">Switch SAB Local</h1>
-        <p className="text-gray-400 text-sm text-center mb-8">Projet initialisé ✅ — Backend sur port 3000</p>
-
-        {/* Comptes démo */}
-        <h2 className="text-sm font-semibold text-gray-500 uppercase tracking-wider mb-3">
-          Comptes de test
-        </h2>
-        <div className="space-y-2">
-          {comptes.map((c, i) => (
-            <div key={i} className="flex items-center justify-between bg-gray-50 rounded-xl px-4 py-3">
-              <div className="flex items-center gap-3">
-                <span className={`text-xs font-medium px-2 py-0.5 rounded-full ${badge[c.couleur]}`}>
-                  {c.role}
-                </span>
-                <span className="text-sm font-mono text-gray-700">{c.pseudo}</span>
-              </div>
-              <div className="text-right">
-                <p className="text-xs text-gray-400">{c.telephone}</p>
-                <p className="text-xs font-mono text-gray-500">{c.mdp}</p>
-              </div>
-            </div>
-          ))}
-        </div>
-
-        {/* Info API */}
-        <div className="mt-6 bg-gray-900 rounded-xl px-4 py-3 text-xs font-mono text-green-400">
-          <p>POST http://localhost:3000/auth/login</p>
-          <p className="text-gray-500 mt-1">{'{ "telephone": "...", "motDePasse": "..." }'}</p>
-        </div>
-
-      </div>
-    </div>
-  )
+    <QueryClientProvider client={queryClient}>
+      <ThemeProvider>
+        <AppProvider>
+          <TooltipProvider>
+            <WouterRouter base={import.meta.env.BASE_URL.replace(/\/$/, "")}>
+              <FraudeAlert />
+              <Router />
+            </WouterRouter>
+            <Toaster />
+          </TooltipProvider>
+        </AppProvider>
+      </ThemeProvider>
+    </QueryClientProvider>
+  );
 }
 
-export default App
+export default App;

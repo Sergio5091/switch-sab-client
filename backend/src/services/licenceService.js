@@ -18,12 +18,11 @@ const getPublicKey = () => {
 
 // ─── Hash de contrôle anti-fraude ─────────────────────────────────────────────
 // Calculé à partir de tous les champs sensibles + la signature RSA
-// Si quelqu'un modifie expiresAt ou autre champ en base, le hash ne correspond plus
 
 export const computeHash = (licence) => {
   const raw = [
     licence.licenceId,
-    licence.salleId,
+    licence.salleId ?? '',
     licence.machineId,
     licence.issuedAt instanceof Date ? licence.issuedAt.toISOString() : licence.issuedAt,
     licence.expiresAt instanceof Date ? licence.expiresAt.toISOString() : licence.expiresAt,
@@ -39,6 +38,7 @@ export const verifySignature = (payload, signature) => {
   if (!publicKey) return null // null = pas de clé (pas false)
 
   try {
+    // Format identique à la signature côté superadmin : licenceId|salleId|machineId|issuedAt|expiresAt
     const data = `${payload.licenceId}|${payload.salleId}|${payload.machineId}|${payload.issuedAt}|${payload.expiresAt}`
     const verify = createVerify('SHA256')
     verify.update(data)
@@ -53,9 +53,14 @@ export const verifySignature = (payload, signature) => {
 // ─── Vérification complète d'une licence ─────────────────────────────────────
 
 export const verifierLicence = (licence) => {
-  // 1. Vérification du hash de contrôle (anti-fraude — toujours actif)
+  // 1. Vérification du hash de contrôle (anti-fraude — seulement si hash présent en base)
   if (licence.hash) {
-    const hashAttendu = computeHash(licence)
+    const licenceForHash = {
+      ...licence,
+      issuedAt:  licence.issuedAt instanceof Date ? licence.issuedAt.toISOString() : licence.issuedAt,
+      expiresAt: licence.expiresAt instanceof Date ? licence.expiresAt.toISOString() : licence.expiresAt,
+    }
+    const hashAttendu = computeHash(licenceForHash)
     if (hashAttendu !== licence.hash) {
       logger.error(`[FRAUDE] Hash invalide pour licence ${licence.licenceId} — modification détectée en base`)
       return { valide: false, raison: 'Licence corrompue — tentative de fraude détectée' }
@@ -67,22 +72,26 @@ export const verifierLicence = (licence) => {
     return { valide: false, raison: 'Licence expirée' }
   }
 
-  // 3. Signature RSA (si clé publique disponible)
+  // 3. Signature RSA
   const publicKey = getPublicKey()
   if (!publicKey) {
-    logger.warn('Clé publique absente — vérification RSA ignorée (mode dev)')
-  } else {
-    const payload = {
-      licenceId: licence.licenceId,
-      salleId:   licence.salleId,
-      machineId: licence.machineId,
-      issuedAt:  licence.issuedAt instanceof Date ? licence.issuedAt.toISOString() : licence.issuedAt,
-      expiresAt: licence.expiresAt instanceof Date ? licence.expiresAt.toISOString() : licence.expiresAt,
-    }
-    const signatureValide = verifySignature(payload, licence.signature)
-    if (signatureValide === false) {
-      return { valide: false, raison: 'Signature RSA invalide' }
-    }
+    logger.error('Clé publique RSA absente — impossible de vérifier la licence')
+    return { valide: false, raison: 'Clé publique RSA manquante. Placez la clé dans ./keys/public-key.pem' }
+  }
+
+  const payload = {
+    licenceId: licence.licenceId,
+    salleId:   licence.salleId ?? 0,
+    machineId: licence.machineId,
+    issuedAt:  licence.issuedAt instanceof Date ? licence.issuedAt.toISOString() : licence.issuedAt,
+    expiresAt: licence.expiresAt instanceof Date ? licence.expiresAt.toISOString() : licence.expiresAt,
+  }
+  const signatureValide = verifySignature(payload, licence.signature)
+  if (signatureValide === false) {
+    return { valide: false, raison: 'Signature RSA invalide' }
+  }
+  if (signatureValide === null) {
+    return { valide: false, raison: 'Erreur lors de la vérification de la signature RSA' }
   }
 
   // 4. Jours restants
@@ -96,7 +105,6 @@ export const verifierLicence = (licence) => {
 
 export const getLicenceActive = async () => {
   return prisma.licenceLocale.findFirst({
-    where: { status: 'ACTIVE' },
-    include: { salle: true }
+    where: { status: 'ACTIVE' }
   })
 }

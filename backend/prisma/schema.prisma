@@ -46,15 +46,17 @@ model Salle {
   ville        String
   quartier     String
   telephone    String
+  email        String?                    // Email du propriétaire pour les rapports
   disabled     Boolean  @default(false)
-  switchType   String   @default("WIFI") // "USB" ou "WIFI"
+  switchType   String   @default("MOCK") // "MOCK", "ZIGBEE", "USB", "WIFI"
   switchConfig String?                   // IP ou port COM
+  indicatifPays String  @default("BJ")   // Code ISO pays pour normalisation tél (ex: BJ, SN, FR, US)
+  dernierExportContacts DateTime?        // date du dernier export .vcf pour détection nouveaux clients
   createdAt    DateTime @default(now())
 
   users       User[]
   categories  Categorie[]
   promos      Promo[]
-  licences    LicenceLocale[]
   configBonus ConfigBonus?
   coupons     Coupon[]
 }
@@ -82,6 +84,7 @@ model User {
   transactions   Transaction[]
   bonus          Bonus?
   promoCode      PromoCode?
+  solde          Float         @default(0)  // Solde monétaire FCFA — alimenté uniquement par coupons
 }
 
 model Categorie {
@@ -102,8 +105,8 @@ model Duree {
   prix        Float
   categorieId Int
 
-  categorie Categorie @relation(fields: [categorieId], references: [id])
-  sessions  Session[]
+  categorie             Categorie              @relation(fields: [categorieId], references: [id])
+  sessions              Session[]
 }
 
 model Poste {
@@ -112,6 +115,7 @@ model Poste {
   image       String?     // URL image personnalisée
   statut      StatutPoste @default(LIBRE)
   categorieId Int
+  zigbeeName  String?     // friendly_name généré automatiquement lors de l'appairage (ex: "ps4_1")
 
   categorie Categorie @relation(fields: [categorieId], references: [id])
   sessions  Session[]
@@ -187,7 +191,8 @@ model ConfigBonus {
   seuilDeblocage  Int                        // secondes pour débloquer
   validitejours   Int   @default(30)
   reductionInvite Float @default(0)          // % réduction client invité
-  bonusParrain    Float @default(0)          // % bonus parrain
+  bonusParrain    Float @default(0)          // montant FCFA offert au parrain lors d'un parrainage
+  bonusFilleul    Float @default(0)          // montant FCFA offert au filleul à son inscription
 
   salle Salle @relation(fields: [salleId], references: [id])
 }
@@ -216,10 +221,11 @@ model Promo {
 
 // Licence locale — copie de la licence générée par le Projet 1
 // Vérifiée hors-ligne avec la clé publique RSA
+// salleId est un identifiant de référence Super Admin, sans FK locale
 model LicenceLocale {
   id        Int      @id @default(autoincrement())
   licenceId String   @unique
-  salleId   Int
+  salleId   Int      // référence Super Admin — pas de FK sur Salle
   machineId String
   issuedAt  DateTime
   expiresAt DateTime
@@ -227,6 +233,4 @@ model LicenceLocale {
   signature String
   hash      String   // Hash de contrôle anti-fraude
   createdAt DateTime @default(now())
-
-  salle Salle @relation(fields: [salleId], references: [id])
 }

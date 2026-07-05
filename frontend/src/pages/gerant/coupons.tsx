@@ -5,11 +5,11 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
-import { Ticket, CheckCircle2, QrCode, Printer } from "lucide-react";
+import { Ticket, CheckCircle2, QrCode, Printer, Copy } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
 import { Badge } from "@/components/ui/badge";
 import { cn } from "@/lib/utils";
-import { QRCodeSVG } from "qrcode.react";
+import { QRCodeCanvas } from "qrcode.react";
 import api from "@/services/api";
 
 interface Coupon {
@@ -21,23 +21,33 @@ interface Coupon {
 }
 
 function CouponQRModal({ coupon, onClose }: { coupon: Coupon; onClose: () => void }) {
-  const printRef = useRef<HTMLDivElement>(null);
+  const canvasRef = useRef<HTMLCanvasElement>(null);
 
   function handlePrint() {
-    const content = printRef.current?.innerHTML;
-    if (!content) return;
-    const win = window.open("", "_blank");
+    const canvas = canvasRef.current;
+    if (!canvas) return;
+    const dataUrl = canvas.toDataURL('image/png');
+    const win = window.open('', '_blank');
     if (!win) return;
     win.document.write(`
       <html><head><title>Coupon ${coupon.code}</title>
       <style>
-        body { margin: 0; display: flex; justify-content: center; align-items: center; min-height: 100vh; font-family: monospace; }
-        .coupon { border: 2px dashed #f97316; border-radius: 12px; padding: 20px; text-align: center; width: 200px; }
-        .valeur { font-size: 20px; font-weight: bold; color: #f97316; }
-        .code { font-size: 14px; font-weight: bold; margin: 8px 0; }
-        .label { font-size: 11px; color: #666; margin-top: 4px; }
+        * { box-sizing: border-box; margin: 0; padding: 0; }
+        body { display: flex; justify-content: center; align-items: center; min-height: 100vh; font-family: monospace; background: #fff; }
+        .coupon { border: 2px dashed #f97316; border-radius: 12px; padding: 20px; text-align: center; width: 240px; display: flex; flex-direction: column; align-items: center; gap: 10px; }
+        .valeur { font-size: 22px; font-weight: bold; color: #f97316; }
+        .qr img { width: 180px; height: 180px; display: block; }
+        .code { font-size: 14px; font-weight: bold; letter-spacing: 3px; color: #111; }
+        .label { font-size: 11px; color: #666; }
       </style></head>
-      <body>${content}</body></html>
+      <body>
+        <div class="coupon">
+          <div class="valeur">${coupon.valeur.toLocaleString()} FCFA</div>
+          <div class="qr"><img src="${dataUrl}" /></div>
+          <div class="code">${coupon.code}</div>
+          <div class="label">SWITCH SAB — Coupon de recharge</div>
+        </div>
+      </body></html>
     `);
     win.document.close();
     win.print();
@@ -52,11 +62,11 @@ function CouponQRModal({ coupon, onClose }: { coupon: Coupon; onClose: () => voi
             <QrCode size={16} className="text-primary" /> QR Code — Coupon
           </DialogTitle>
         </DialogHeader>
-        <div ref={printRef} className="coupon flex flex-col items-center gap-3 p-4 border-2 border-dashed border-primary/40 rounded-xl">
-          <div className="valeur text-xl font-bold text-primary">{coupon.valeur.toLocaleString()} FCFA</div>
-          <QRCodeSVG value={coupon.code} size={180} bgColor="transparent" fgColor="currentColor" className="text-foreground" level="M" />
-          <div className="code font-mono text-sm font-semibold text-foreground tracking-widest">{coupon.code}</div>
-          <div className="label text-xs text-muted-foreground">SWITCH SAB — Coupon de recharge</div>
+        <div className="flex flex-col items-center gap-3 p-4 border-2 border-dashed border-primary/40 rounded-xl">
+          <div className="text-xl font-bold text-primary">{coupon.valeur.toLocaleString()} FCFA</div>
+          <QRCodeCanvas ref={canvasRef} value={coupon.code} size={180} bgColor="#ffffff" fgColor="#000000" level="M" />
+          <div className="font-mono text-sm font-semibold text-foreground tracking-widest">{coupon.code}</div>
+          <div className="text-xs text-muted-foreground">SWITCH SAB — Coupon de recharge</div>
         </div>
         <Button onClick={handlePrint} className="w-full gap-2" variant="outline">
           <Printer size={15} /> Imprimer
@@ -75,6 +85,7 @@ export default function GerantCoupons() {
   const [count, setCount] = useState("5");
   const [loading, setLoading] = useState(false);
   const [selectedCoupon, setSelectedCoupon] = useState<Coupon | null>(null);
+  const [printCount, setPrintCount] = useState("40");
 
   useEffect(() => {
     api.get('/gerant/coupons')
@@ -97,6 +108,55 @@ export default function GerantCoupons() {
     } finally {
       setLoading(false);
     }
+  }
+
+  async function handlePrintBatch(nb: number) {
+    const liste = coupons.filter(c => !c.utilise).slice(0, nb);
+    if (liste.length === 0) {
+      toast({ title: "Aucun coupon actif à imprimer", variant: "destructive" });
+      return;
+    }
+
+    // Générer les QR en SVG inline (pas besoin de chargement d'image)
+    const QRCode = (await import('qrcode')).default;
+    const rows = await Promise.all(
+      liste.map(async c => {
+        const svgString = await QRCode.toString(c.code, {
+          type: 'svg',
+          width: 100,
+          margin: 1,
+          color: { dark: '#000000', light: '#ffffff' }
+        });
+        return `
+          <div class="coupon">
+            <div class="valeur">${c.valeur.toLocaleString()} FCFA</div>
+            <div class="qr">${svgString}</div>
+            <div class="code">${c.code}</div>
+            <div class="label">Switch SAB</div>
+          </div>`;
+      })
+    );
+
+    const win = window.open("", "_blank");
+    if (!win) return;
+    win.document.write(`
+      <html><head><title>Coupons Switch SAB</title>
+      <style>
+        @page { size: A4; margin: 8mm; }
+        * { box-sizing: border-box; }
+        body { margin: 0; font-family: monospace; }
+        .grid { display: grid; grid-template-columns: repeat(4, 1fr); gap: 3mm; width: 100%; }
+        .coupon { border: 1.5px dashed #f97316; border-radius: 6px; padding: 6px 4px; text-align: center; page-break-inside: avoid; display: flex; flex-direction: column; align-items: center; gap: 3px; }
+        .valeur { font-size: 12px; font-weight: bold; color: #f97316; }
+        .qr svg { width: 90px; height: 90px; display: block; }
+        .code { font-size: 10px; font-weight: bold; letter-spacing: 1.5px; }
+        .label { font-size: 8px; color: #888; }
+      </style></head>
+      <body><div class="grid">${rows.join("")}</div>
+      <script>window.onload = function() { window.print(); window.close(); }<\/script>
+      </body></html>`);
+    win.document.close();
+    toast({ title: `${liste.length} coupons avec QR envoyés à l'imprimante` });
   }
 
   const actifs = coupons.filter(c => !c.utilise);
@@ -136,6 +196,24 @@ export default function GerantCoupons() {
           <p className="text-xs text-muted-foreground">
             ⚠️ Les coupons générés ne peuvent pas être modifiés ni supprimés.
           </p>
+          {coupons.length > 0 && (
+            <div className="flex items-center gap-2 pt-2 border-t border-border flex-wrap">
+              <span className="text-xs text-muted-foreground">Imprimer :</span>
+              <Input
+                type="number"
+                min={1}
+                max={actifs.length}
+                value={printCount}
+                onChange={e => setPrintCount(e.target.value)}
+                className="w-20 h-8 text-xs"
+                placeholder="Qté"
+              />
+              <Button variant="outline" size="sm" onClick={() => handlePrintBatch(Number(printCount) || actifs.length)} className="gap-1.5 text-xs">
+                <Printer size={13} /> Imprimer
+              </Button>
+              <span className="text-xs text-muted-foreground">({actifs.length} actifs disponibles)</span>
+            </div>
+          )}
         </div>
 
         <div className="bg-card border border-border rounded-xl overflow-hidden">
@@ -156,9 +234,20 @@ export default function GerantCoupons() {
                 {coupons.length === 0 && (
                   <tr><td colSpan={4} className="px-5 py-8 text-center text-muted-foreground text-sm">Aucun coupon généré</td></tr>
                 )}
-                {coupons.map(coupon => (
+                {[...actifs, ...utilises].map(coupon => (
                   <tr key={coupon.id} className={cn("hover:bg-muted/20 transition-colors", coupon.utilise && "opacity-50")}>
-                    <td className="px-5 py-3 font-mono text-xs text-foreground tracking-widest">{coupon.code}</td>
+                    <td className="px-5 py-3 font-mono text-xs text-foreground tracking-widest">
+                      <div className="flex items-center gap-2">
+                        {coupon.code}
+                        <button
+                          onClick={() => navigator.clipboard.writeText(coupon.code).then(() => toast({ title: "Code copié !" }))}
+                          className="text-muted-foreground hover:text-primary transition-colors"
+                          title="Copier le code"
+                        >
+                          <Copy size={12} />
+                        </button>
+                      </div>
+                    </td>
                     <td className="px-3 py-3 font-semibold text-primary">{coupon.valeur.toLocaleString()} F</td>
                     <td className="px-3 py-3">
                       <Badge className={!coupon.utilise ? "bg-green-500/10 text-green-400 border-green-500/20 text-xs gap-1" : "bg-muted text-muted-foreground text-xs gap-1"}>

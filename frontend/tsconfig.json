@@ -12,7 +12,12 @@
     "noEmit": true,
     "jsx": "react-jsx",
 
-    "strict": true
+    "strict": true,
+
+    "baseUrl": ".",
+    "paths": {
+      "@/*": ["src/*"]
+    }
   },
   "include": ["src"]
 }
