@@ -48,7 +48,7 @@ async function reprendre(scheduleSessionEnd) {
 async function terminerSessionExpiree(sessionId, posteId) {
   try {
     const { getIO } = await import('../socket.js')
-    const { default: switchService } = await import('../switch/switchService.js')
+    // pas utilisé ici — le switch est importé plus bas
 
     await prisma.$transaction(async (tx) => {
       await tx.session.update({
@@ -58,7 +58,10 @@ async function terminerSessionExpiree(sessionId, posteId) {
       await tx.poste.update({ where: { id: posteId }, data: { statut: 'LIBRE' } })
     })
 
-    try { await switchService.eteindrePoste(posteId) } catch (e) { /* mock */ }
+    try {
+      const switchService = await import('../switch/switchService.js')
+      await switchService.eteindrePoste(posteId)
+    } catch (e) { /* mock */ }
     try { getIO().emit('session:end', { sessionId, posteId }) } catch (e) { /* socket pas dispo */ }
 
     logger.info(`[scheduler] Session ${sessionId} expirée terminée`)
