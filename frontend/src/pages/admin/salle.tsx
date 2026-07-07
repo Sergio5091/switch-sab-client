@@ -9,7 +9,7 @@ import {
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { Building2, MapPin, Phone, Wifi, Usb, Save, AlertCircle } from "lucide-react";
+import { Building2, MapPin, Phone, Wifi, Usb, Save, AlertCircle, Radio } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
 import api from "@/services/api";
 
@@ -72,7 +72,7 @@ const schema = z.object({
   ville:        z.string().min(2, "Ville requise"),
   quartier:     z.string().min(2, "Quartier requis"),
   telephone:    z.string().min(6, "Téléphone requis"),
-  switchType:   z.enum(["WIFI", "USB"]),
+  switchType:   z.enum(["WIFI", "USB", "ZIGBEE", "MOCK"]),
   switchConfig: z.string().optional(),
 }).refine(
   (data) => data.switchType !== "WIFI" || (!!data.switchConfig && data.switchConfig.trim().length > 0),
@@ -227,16 +227,20 @@ export default function AdminSalle() {
               <FormField control={form.control} name="switchType" render={({ field }) => (
                 <FormItem>
                   <FormControl>
-                    <div className="grid grid-cols-2 gap-2">
-                      {(["WIFI", "USB"] as const).map((type) => (
+                    <div className="grid grid-cols-3 gap-2">
+                      {([
+                        { type: "WIFI",   label: "WIFI",   icon: <Wifi size={15} /> },
+                        { type: "USB",    label: "USB",    icon: <Usb size={15} /> },
+                        { type: "ZIGBEE", label: "Zigbee", icon: <Radio size={15} /> },
+                      ] as const).map(({ type, label, icon }) => (
                         <button key={type} type="button" onClick={() => field.onChange(type)}
                           className={`flex items-center gap-2 p-3 rounded-xl border text-sm font-medium transition-all ${
                             field.value === type
                               ? "border-primary bg-primary/10 text-primary"
                               : "border-border bg-card text-muted-foreground hover:border-primary/30"
                           }`}>
-                          {type === "WIFI" ? <Wifi size={15} /> : <Usb size={15} />}
-                          {type}
+                          {icon}
+                          {label}
                         </button>
                       ))}
                     </div>
@@ -245,29 +249,45 @@ export default function AdminSalle() {
                 </FormItem>
               )} />
 
-              <FormField control={form.control} name="switchConfig" render={({ field }) => (
-                <FormItem>
-                  <FormLabel className="flex items-center gap-1">
-                    {switchType === "WIFI" ? "Adresse IP du switch" : "Port COM (USB)"}
-                    {switchType === "WIFI" && <span className="text-destructive text-xs">*</span>}
-                    {switchType === "USB" && <span className="text-muted-foreground text-xs font-normal">(optionnel)</span>}
-                  </FormLabel>
-                  <FormControl>
-                    <Input
-                      {...field}
-                      placeholder={switchType === "WIFI" ? "192.168.1.100" : "COM3"}
-                      className="h-11"
-                    />
-                  </FormControl>
-                  {switchType === "WIFI" && (
-                    <p className="text-xs text-muted-foreground flex items-center gap-1">
-                      <AlertCircle size={11} />
-                      Adresse IP locale du switch sur le réseau de la salle
-                    </p>
-                  )}
-                  <FormMessage />
-                </FormItem>
-              )} />
+              {/* switchConfig — masqué pour Zigbee (pas besoin d'IP, tout passe par MQTT) */}
+              {switchType !== "ZIGBEE" && (
+                <FormField control={form.control} name="switchConfig" render={({ field }) => (
+                  <FormItem>
+                    <FormLabel className="flex items-center gap-1">
+                      {switchType === "WIFI" ? "Adresse IP du switch" : "Port COM (USB)"}
+                      {switchType === "WIFI" && <span className="text-destructive text-xs">*</span>}
+                      {switchType === "USB"  && <span className="text-muted-foreground text-xs font-normal">(optionnel)</span>}
+                    </FormLabel>
+                    <FormControl>
+                      <Input
+                        {...field}
+                        placeholder={switchType === "WIFI" ? "192.168.1.100" : "COM3"}
+                        className="h-11"
+                      />
+                    </FormControl>
+                    {switchType === "WIFI" && (
+                      <p className="text-xs text-muted-foreground flex items-center gap-1">
+                        <AlertCircle size={11} />
+                        Adresse IP locale du switch sur le réseau de la salle
+                      </p>
+                    )}
+                    <FormMessage />
+                  </FormItem>
+                )} />
+              )}
+
+              {/* Info Zigbee */}
+              {switchType === "ZIGBEE" && (
+                <div className="flex items-start gap-2 bg-primary/5 border border-primary/20 rounded-xl px-3 py-2.5">
+                  <Radio size={14} className="text-primary mt-0.5 flex-shrink-0" />
+                  <p className="text-xs text-muted-foreground">
+                    Mode Zigbee — les prises sont pilotées via{" "}
+                    <span className="font-medium text-foreground">Zigbee2MQTT + MQTT</span>.
+                    Aucune adresse IP requise. Appairez les prises depuis{" "}
+                    <span className="font-medium text-foreground">Admin → Postes</span>.
+                  </p>
+                </div>
+              )}
             </div>
 
             <Button type="submit" className="w-full h-11 gap-2" disabled={loading}>

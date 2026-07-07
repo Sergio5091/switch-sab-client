@@ -2,7 +2,7 @@ import { useState, useEffect } from "react";
 import { useLocation } from "wouter";
 import { useApp } from "@/contexts/AppContext";
 import { Button } from "@/components/ui/button";
-import { Upload, AlertCircle, CheckCircle2, FileJson } from "lucide-react";
+import { Upload, AlertCircle, CheckCircle2, FileJson, Copy, Check } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
 import { axiosInstance } from "@/lib/axios";
 
@@ -13,6 +13,16 @@ export default function LicencePage() {
   const [error, setError] = useState("");
   const [loading, setLoading] = useState(false);
   const [jsonContent, setJsonContent] = useState<any>(null);
+  const [copied, setCopied] = useState(false);
+
+  const copyMachineId = () => {
+    if (!licenceStatut?.machineId) return;
+    navigator.clipboard.writeText(licenceStatut.machineId).then(() => {
+      setCopied(true);
+      toast({ title: "Machine ID copié !" });
+      setTimeout(() => setCopied(false), 2000);
+    });
+  };
 
   // Rediriger vers le dashboard si la licence est déjà valide
   useEffect(() => {
@@ -97,7 +107,16 @@ export default function LicencePage() {
                 </span>
               </div>
               <div className="text-xs text-muted-foreground">
-                Machine ID: <span className="font-mono">{licenceStatut.machineId}</span>
+                Machine ID:{" "}
+                <span className="font-mono">{licenceStatut.machineId}</span>
+                <button
+                  onClick={copyMachineId}
+                  className="inline-flex items-center gap-1 ml-2 px-1.5 py-0.5 rounded text-xs bg-muted hover:bg-muted/80 transition-colors text-muted-foreground hover:text-foreground"
+                  title="Copier le Machine ID"
+                >
+                  {copied ? <Check size={11} className="text-green-500" /> : <Copy size={11} />}
+                  {copied ? "Copié" : "Copier"}
+                </button>
               </div>
               {licenceStatut.joursRestants > 0 && (
                 <div className="text-xs text-muted-foreground">

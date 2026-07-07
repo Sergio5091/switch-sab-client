@@ -252,6 +252,13 @@ const adminService = {
     await api.delete(`/admin/zigbee/desappairer/${posteId}`);
   },
 
+  /**
+   * Fait clignoter physiquement la LED de la prise liée au poste.
+   */
+  identifierPrise: async (posteId: number): Promise<void> => {
+    await api.post(`/admin/zigbee/identifier/${posteId}`);
+  },
+
   getStatutContacts: async (): Promise<{ totalClients: number; nouveauxClients: number; dernierExport: string | null }> => {
     const res = await api.get('/admin/contacts/statut');
     return res.data;

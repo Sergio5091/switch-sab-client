@@ -11,7 +11,7 @@ import { creerConfigBonus, getConfigBonus, modifierConfigBonus } from './bonus.c
 import { getPromoConfig, modifierPromoConfig } from './promoConfig.controller.js'
 import { genererCoupons, listerCoupons, exportCouponsPdf } from './coupons.controller.js'
 import { creerPromotion, listerPromotions, envoyerPromotion, exportContacts, exportNouveauxContacts, statutContacts } from './promotions.controller.js'
-import { appairerPrise, desappairerPrise } from './zigbee.controller.js'
+import { appairerPrise, desappairerPrise, identifierPrise } from './zigbee.controller.js'
 
 const router = Router()
 
@@ -73,7 +73,8 @@ router.get('/contacts/export',          exportContacts)
 router.get('/contacts/export/nouveaux', exportNouveauxContacts)
 
 // ─── Zigbee — appairage des prises ───────────────────────────────────────────
-router.post  ('/zigbee/appairer/:posteId',     appairerPrise)
-router.delete('/zigbee/desappairer/:posteId',  desappairerPrise)
+router.post  ('/zigbee/appairer/:posteId',    appairerPrise)
+router.delete('/zigbee/desappairer/:posteId', desappairerPrise)
+router.post  ('/zigbee/identifier/:posteId',  identifierPrise)
 
 export default router

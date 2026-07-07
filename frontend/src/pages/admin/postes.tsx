@@ -9,7 +9,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { z } from "zod";
-import { Plus, Pencil, Trash2, Monitor, Tag, Wifi, WifiOff, Loader2, X } from "lucide-react";
+import { Plus, Pencil, Trash2, Monitor, Tag, Wifi, WifiOff, Loader2, X, MapPin } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
 import { Badge } from "@/components/ui/badge";
 import adminService, { Poste, Categorie } from "@/services/adminService";
@@ -216,19 +216,39 @@ export default function AdminPostes() {
 
                             {/* Prise déjà liée */}
                             {estLie && pairing.status !== 'waiting' && (
-                              <div className="flex items-center justify-between">
-                                <div className="flex items-center gap-1.5 text-green-500 text-xs">
-                                  <Wifi size={13} />
-                                  <span className="font-mono">{p.zigbeeName}</span>
+                              <div className="space-y-2">
+                                <div className="flex items-center justify-between">
+                                  <div className="flex items-center gap-1.5 text-green-500 text-xs">
+                                    <Wifi size={13} />
+                                    <span className="font-mono">{p.zigbeeName}</span>
+                                  </div>
+                                  <div className="flex gap-1">
+                                    <Button
+                                      variant="ghost"
+                                      size="sm"
+                                      className="text-muted-foreground hover:text-primary h-6 px-1.5 text-xs"
+                                      title="Faire clignoter la prise pour l'identifier"
+                                      onClick={async () => {
+                                        try {
+                                          await adminService.identifierPrise(p.id)
+                                          toast({ title: `Prise "${p.zigbeeName}" clignote` })
+                                        } catch {
+                                          toast({ title: "Erreur identification", variant: "destructive" })
+                                        }
+                                      }}
+                                    >
+                                      <MapPin size={11} className="mr-1" /> Localiser
+                                    </Button>
+                                    <Button
+                                      variant="ghost"
+                                      size="sm"
+                                      className="text-muted-foreground hover:text-destructive h-6 px-1.5 text-xs"
+                                      onClick={() => handleDesappairer(p)}
+                                    >
+                                      <X size={11} className="mr-1" /> Délier
+                                    </Button>
+                                  </div>
                                 </div>
-                                <Button
-                                  variant="ghost"
-                                  size="sm"
-                                  className="text-muted-foreground hover:text-destructive h-6 px-1.5 text-xs"
-                                  onClick={() => handleDesappairer(p)}
-                                >
-                                  <X size={11} className="mr-1" /> Délier
-                                </Button>
                               </div>
                             )}
 
