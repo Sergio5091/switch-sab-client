@@ -1,6 +1,6 @@
+import 'dotenv/config'
 import express from 'express'
 import cors from 'cors'
-import dotenv from 'dotenv'
 import corsOptions from './config/cors.js'
 import { checkLicenceAtStartup, requireLicence } from './middlewares/licence.middleware.js'
 import { verifyJwt, requireRole } from './middlewares/auth.middleware.js'
@@ -19,7 +19,6 @@ import rapportsRoutes from './modules/rapports/rapports.routes.js'
 import licenceRoutes  from './modules/licence/licence.routes.js'
 import setupRoutes    from './modules/setup/setup.routes.js'
 
-dotenv.config()
 
 const app = express()
 

@@ -48,7 +48,6 @@ async function reprendre(scheduleSessionEnd) {
 async function terminerSessionExpiree(sessionId, posteId) {
   try {
     const { getIO } = await import('../socket.js')
-    // pas utilisé ici — le switch est importé plus bas
 
     await prisma.$transaction(async (tx) => {
       await tx.session.update({
