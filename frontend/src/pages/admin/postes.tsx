@@ -38,12 +38,14 @@ export default function AdminPostes() {
 
   // Map posteId → état d'appairage
   const [pairingStates, setPairingStates] = useState<Record<number, PairingState>>({});
+  const [switchType, setSwitchType] = useState<string>('MOCK');
 
   useEffect(() => {
     adminService.getPostes().then(setPostes).catch(() =>
       toast({ title: "Erreur chargement postes", variant: "destructive" })
     );
     adminService.getCategories().then(setCategories);
+    adminService.getSalle().then(s => setSwitchType(s.switchType)).catch(() => {});
   }, []);
 
   const form = useForm<FormValues>({
@@ -212,7 +214,7 @@ export default function AdminPostes() {
                           </Badge>
 
                           {/* ── Zone Zigbee ─────────────────────────────── */}
-                          <div className="border-t border-border pt-3">
+                          {switchType === 'ZIGBEE' && <div className="border-t border-border pt-3">
 
                             {/* Prise déjà liée */}
                             {estLie && pairing.status !== 'waiting' && (
@@ -300,7 +302,7 @@ export default function AdminPostes() {
                                 </Button>
                               </div>
                             )}
-                          </div>
+                          </div>}
                         </div>
                       );
                     })}

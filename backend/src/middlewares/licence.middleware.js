@@ -55,16 +55,10 @@ export const requireLicence = (req, res, next) => {
   const url = req.originalUrl.split('?')[0]
 
   const exemptee =
-<<<<<<< HEAD
-    url === '/api/auth/login'    ||
-    url === '/api/auth/register' ||
-    url.startsWith('/api/licence')
-=======
-    originalUrl === '/api/auth/login'      ||
-    originalUrl === '/api/auth/register'   ||
-    originalUrl.startsWith('/api/licence') ||
-    originalUrl.startsWith('/api/setup')
->>>>>>> origin/dev/ok
+    url === '/api/auth/login'      ||
+    url === '/api/auth/register'   ||
+    url.startsWith('/api/licence') ||
+    url.startsWith('/api/setup')
 
   if (exemptee) return next()
 

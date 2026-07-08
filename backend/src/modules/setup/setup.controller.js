@@ -66,7 +66,7 @@ export const creerSalle = async (req, res) => {
       requireReconnect: true  // Flag pour le frontend
     })
   } catch (err) {
-    logger.error('[setup/salle]', err)
-    return res.status(500).json({ message: 'Erreur serveur' })
+    logger.error('[setup/salle]', err.message, err.stack)
+    return res.status(500).json({ message: err.message })
   }
 }

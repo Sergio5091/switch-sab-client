@@ -3,11 +3,7 @@ import { defineConfig } from 'prisma/config'
 import { PrismaPg } from '@prisma/adapter-pg'
 import dotenv from 'dotenv'
 
-<<<<<<< HEAD
-// Charger .env en local (ignoré sur Render car les vars sont injectées directement)
-=======
 // Charger .env en local (ignoré sur Render — vars injectées directement)
->>>>>>> origin/dev/ok
 dotenv.config()
 
 const connectionString = process.env.DATABASE_URL

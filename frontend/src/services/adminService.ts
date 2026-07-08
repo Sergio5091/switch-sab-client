@@ -90,6 +90,13 @@ const adminService = {
     return res.data;
   },
 
+  // ─── SALLE ────────────────────────────────────────────────────────────────
+
+  getSalle: async (): Promise<{ id: number; nom: string; switchType: string; switchConfig?: string }> => {
+    const res = await api.get('/admin/salle');
+    return res.data;
+  },
+
   // ─── CATEGORIES ───────────────────────────────────────────────────────────
 
   getCategories: async (): Promise<Categorie[]> => {

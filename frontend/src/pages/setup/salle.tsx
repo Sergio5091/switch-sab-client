@@ -158,7 +158,7 @@ const schema = z.object({
   ville:        z.string().min(2, "Ville requise"),
   quartier:     z.string().min(2, "Quartier requis"),
   telephone:    z.string().min(8, "Téléphone requis"),
-  switchType:   z.enum(["WIFI", "USB"]),
+  switchType:   z.enum(["WIFI", "USB", "ZIGBEE"]),
   switchConfig: z.string().optional(),
 }).refine(
   (data) => data.switchType !== "WIFI" || (!!data.switchConfig && data.switchConfig.trim().length > 0),
@@ -187,7 +187,7 @@ export default function SetupSallePage() {
       ville:        "",
       quartier:     "",
       telephone:    "",
-      switchType:   "WIFI",
+      switchType:   "WIFI" as const,
       switchConfig: "",
     },
   });
@@ -352,8 +352,8 @@ export default function SetupSallePage() {
                 <FormItem>
                   <FormLabel>Type de switch réseau</FormLabel>
                   <FormControl>
-                    <div className="grid grid-cols-2 gap-2">
-                      {(["WIFI", "USB"] as const).map((type) => (
+                    <div className="grid grid-cols-3 gap-2">
+                      {(["WIFI", "USB", "ZIGBEE"] as const).map((type) => (
                         <button key={type} type="button" onClick={() => field.onChange(type)}
                           className={`flex items-center gap-2 p-3 rounded-xl border text-sm font-medium transition-all ${
                             field.value === type
@@ -365,10 +365,16 @@ export default function SetupSallePage() {
                       ))}
                     </div>
                   </FormControl>
+                  {switchType === "ZIGBEE" && (
+                    <p className="text-xs text-muted-foreground">
+                      Les prises Zigbee seront appairées depuis Admin → Postes après la configuration.
+                    </p>
+                  )}
                   <FormMessage />
                 </FormItem>
               )} />
 
+              {switchType !== "ZIGBEE" && (
               <FormField control={form.control} name="switchConfig" render={({ field }) => (
                 <FormItem>
                   <FormLabel>
@@ -391,6 +397,7 @@ export default function SetupSallePage() {
                   <FormMessage />
                 </FormItem>
               )} />
+              )}
 
               {error && (
                 <div className="flex items-center gap-2 bg-destructive/10 border border-destructive/20 text-destructive rounded-xl px-3 py-2.5 text-sm">

@@ -34,10 +34,11 @@ async function main() {
     update: {},
     create: {
       pseudo:     'admin',
+      email:      'admin@switchsab.local',
       telephone:  '+22900000001',
       motDePasse: hash('admin123'),
       role:       'ADMIN',
-      salleId:    null,  // Pas encore de salle configurée
+      salleId:    null,
     }
   })
 
