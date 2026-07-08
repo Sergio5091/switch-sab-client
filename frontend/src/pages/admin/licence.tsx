@@ -2,7 +2,7 @@ import { useState, useEffect } from "react";
 import { useLocation } from "wouter";
 import { useApp } from "@/contexts/AppContext";
 import { Button } from "@/components/ui/button";
-import { Upload, AlertCircle, CheckCircle2, FileJson } from "lucide-react";
+import { Upload, AlertCircle, CheckCircle2, FileJson, Copy, Check } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
 import { axiosInstance } from "@/lib/axios";
 
@@ -13,6 +13,16 @@ export default function LicencePage() {
   const [error, setError] = useState("");
   const [loading, setLoading] = useState(false);
   const [jsonContent, setJsonContent] = useState<any>(null);
+  const [copied, setCopied] = useState(false);
+
+  const copyMachineId = () => {
+    if (!licenceStatut?.machineId) return;
+    navigator.clipboard.writeText(licenceStatut.machineId).then(() => {
+      setCopied(true);
+      toast({ title: "Machine ID copié !" });
+      setTimeout(() => setCopied(false), 2000);
+    });
+  };
 
   // Rediriger vers le dashboard si la licence est déjà valide
   useEffect(() => {
@@ -23,6 +33,9 @@ export default function LicencePage() {
       setLocation(dest);
     }
   }, [licenceStatut, currentUser, setLocation]);
+
+  // Seuls admin et gérant peuvent accéder à cette page
+  const canAccess = currentUser?.role === "admin" || currentUser?.role === "gerant";
 
   const handleFileUpload = (event: React.ChangeEvent<HTMLInputElement>) => {
     const file = event.target.files?.[0];
@@ -75,7 +88,7 @@ export default function LicencePage() {
           <div className="space-y-1.5">
             <h1 className="text-2xl font-bold text-foreground">Activation de licence</h1>
             <p className="text-sm text-muted-foreground">
-              Importez le fichier JSON de licence généré par le Super Admin.
+              Importez la licence JSON générée par le Super Admin.
             </p>
           </div>
 
@@ -94,7 +107,16 @@ export default function LicencePage() {
                 </span>
               </div>
               <div className="text-xs text-muted-foreground">
-                Machine ID: <span className="font-mono">{licenceStatut.machineId}</span>
+                Machine ID:{" "}
+                <span className="font-mono">{licenceStatut.machineId}</span>
+                <button
+                  onClick={copyMachineId}
+                  className="inline-flex items-center gap-1 ml-2 px-1.5 py-0.5 rounded text-xs bg-muted hover:bg-muted/80 transition-colors text-muted-foreground hover:text-foreground"
+                  title="Copier le Machine ID"
+                >
+                  {copied ? <Check size={11} className="text-green-500" /> : <Copy size={11} />}
+                  {copied ? "Copié" : "Copier"}
+                </button>
               </div>
               {licenceStatut.joursRestants > 0 && (
                 <div className="text-xs text-muted-foreground">
@@ -123,10 +145,10 @@ export default function LicencePage() {
                 </div>
                 <div className="space-y-1">
                   <div className="text-sm font-medium text-foreground">
-                    {jsonContent ? "Fichier chargé" : "Importer le fichier JSON"}
+                    {jsonContent ? "Licence chargée" : "Importer la licence"}
                   </div>
                   <div className="text-xs text-muted-foreground">
-                    Cliquez pour sélectionner ou glissez le fichier
+                    Cliquez pour sélectionner ou glissez le fichier de licence
                   </div>
                 </div>
               </label>
@@ -140,7 +162,7 @@ export default function LicencePage() {
                 </div>
                 <div className="text-xs text-muted-foreground space-y-1 font-mono">
                   <div>ID: {jsonContent.licenceId}</div>
-                  <div>Salle: {jsonContent.salleId}</div>
+                  <div>Salle: {jsonContent.nomSalle}</div>
                   <div>Machine: {jsonContent.machineId}</div>
                   <div>Expire: {new Date(jsonContent.expiresAt).toLocaleDateString()}</div>
                 </div>

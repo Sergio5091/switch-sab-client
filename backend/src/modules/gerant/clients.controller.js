@@ -1,22 +1,18 @@
 import prisma from '../../services/prismaClient.js'
 import bcrypt from 'bcryptjs'
 import logger from '../../config/logger.js'
+import { normaliserOuEchouer } from '../../services/phoneService.js'
 
 // ─── POST /gerant/clients → Créer client ──────────────────────────────────
 
 export const creerClient = async (req, res) => {
-  const { pseudo, motDePasse, telephone, estEnfant, codeParental } = req.body
+  const { pseudo, motDePasse, telephone, estEnfant, codeParental, codeParrainage } = req.body
 
   if (!pseudo || !motDePasse) {
     return res.status(400).json({ message: 'pseudo et motDePasse requis' })
   }
-
   if (motDePasse.length < 6) {
     return res.status(400).json({ message: 'Le mot de passe doit contenir au moins 6 caractères' })
-  }
-
-  if (estEnfant && !codeParental) {
-    return res.status(400).json({ message: 'Code parental requis pour les enfants' })
   }
 
   try {
@@ -25,12 +21,50 @@ export const creerClient = async (req, res) => {
       return res.status(409).json({ message: 'Ce pseudo est déjà utilisé' })
     }
 
+    // Normaliser le téléphone au format E.164 selon le pays de la salle
+    let telephoneNormalise = telephone
+    if (telephone) {
+      const salle = await prisma.salle.findUnique({
+        where: { id: req.user.salle_id },
+        select: { indicatifPays: true }
+      })
+      try {
+        telephoneNormalise = normaliserOuEchouer(telephone, salle?.indicatifPays ?? 'BJ')
+      } catch (phoneErr) {
+        return res.status(400).json({ message: phoneErr.message })
+      }
+
+      const telExistant = await prisma.user.findUnique({ where: { telephone: telephoneNormalise } })
+      if (telExistant) {
+        return res.status(409).json({ message: 'Ce numéro de téléphone est déjà utilisé' })
+      }
+    }
+
+    // Résoudre le parrain si un code de parrainage est fourni
+    let parrain = null
+    if (codeParrainage && codeParrainage.trim()) {
+      parrain = await prisma.user.findFirst({
+        where: {
+          salleId: req.user.salle_id,
+          role: 'CLIENT',
+          active: true,
+          OR: [
+            { pseudo: codeParrainage.trim() },
+            { telephone: codeParrainage.trim() }
+          ]
+        }
+      })
+      if (!parrain) {
+        return res.status(404).json({ message: `Code de parrainage invalide : aucun client trouvé avec "${codeParrainage}"` })
+      }
+    }
+
     const hash = await bcrypt.hash(motDePasse, 10)
 
     const client = await prisma.user.create({
       data: {
         pseudo,
-        telephone: telephone || `auto-${Date.now()}`,
+        telephone: telephoneNormalise || `tel-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`,
         motDePasse: hash,
         role: 'CLIENT',
         estEnfant: estEnfant || false,
@@ -44,27 +78,61 @@ export const creerClient = async (req, res) => {
     const categories = await prisma.categorie.findMany({
       where: { salleId: req.user.salle_id }
     })
-
     for (const cat of categories) {
       await prisma.credit.create({
-        data: {
-          clientId: client.id,
-          categorieId: cat.id,
-          solde: 0
-        }
+        data: { clientId: client.id, categorieId: cat.id, solde: 0 }
       })
     }
 
     // Créer bonus
     await prisma.bonus.create({
-      data: {
-        clientId: client.id,
-        solde: 0,
-        disponible: false
-      }
+      data: { clientId: client.id, solde: 0, disponible: false }
     })
 
-    logger.info(`Client créé : ${pseudo} (${client.telephone})`)
+    // Appliquer les bonus de parrainage si applicable
+    if (parrain) {
+      const configBonus = await prisma.configBonus.findUnique({
+        where: { salleId: req.user.salle_id }
+      })
+
+      if (configBonus && (configBonus.bonusParrain > 0 || configBonus.bonusFilleul > 0)) {
+        await prisma.$transaction(async (tx) => {
+          // ── Bonus PARRAIN : incrémenter User.solde ─────────────────────
+          if (configBonus.bonusParrain > 0) {
+            await tx.user.update({
+              where: { id: parrain.id },
+              data: { solde: { increment: configBonus.bonusParrain } }
+            })
+            await tx.transaction.create({
+              data: { clientId: parrain.id, montant: configBonus.bonusParrain, type: 'BONUS' }
+            })
+            logger.info(`Parrainage : ${parrain.pseudo} reçoit +${configBonus.bonusParrain} FCFA (solde monétaire) pour avoir parrainé ${pseudo}`)
+          }
+
+          // ── Bonus FILLEUL : incrémenter User.solde ─────────────────────
+          if (configBonus.bonusFilleul > 0) {
+            await tx.user.update({
+              where: { id: client.id },
+              data: { solde: { increment: configBonus.bonusFilleul } }
+            })
+            await tx.transaction.create({
+              data: { clientId: client.id, montant: configBonus.bonusFilleul, type: 'BONUS' }
+            })
+            logger.info(`Parrainage : ${pseudo} (filleul id=${client.id}) reçoit +${configBonus.bonusFilleul} FCFA (solde monétaire) à l'inscription`)
+          }
+        })
+        logger.info(`Parrainage transaction OK — parrain=${parrain.id}, filleul=${client.id}`)
+      } else {
+        logger.warn(`Parrainage : configBonus introuvable ou montants à 0 pour salleId=${req.user.salle_id}`)
+      }
+    } // fin if (parrain)
+
+    logger.info(`Client créé : ${pseudo} (${client.telephone})${parrain ? ` — parrainé par ${parrain.pseudo}` : ''}`)
+
+    // Récupérer la config bonus pour l'inclure dans la réponse
+    const configBonusReponse = parrain
+      ? await prisma.configBonus.findUnique({ where: { salleId: req.user.salle_id } })
+      : null
 
     return res.status(201).json({
       id: client.id,
@@ -73,13 +141,23 @@ export const creerClient = async (req, res) => {
       role: client.role,
       estEnfant: client.estEnfant,
       salleId: client.salleId,
-      motDePasseTemporaire: motDePasse // À communiquer au client
+      parrain: parrain ? { pseudo: parrain.pseudo } : null,
+      bonusAppliques: parrain && configBonusReponse ? {
+        bonusParrain: configBonusReponse.bonusParrain,
+        bonusFilleul: configBonusReponse.bonusFilleul,
+      } : null
     })
   } catch (err) {
     console.error('[gerant/clients POST]', err)
-    return res.status(500).json({
-      message: 'Erreur serveur'
-    })
+    // Gérer les violations de contrainte unique explicitement
+    if (err.code === 'P2002') {
+      const champ = err.meta?.target || err.meta?.constraint || 'champ inconnu'
+      if (String(champ).includes('pseudo')) return res.status(409).json({ message: 'Ce pseudo est déjà utilisé' })
+      if (String(champ).includes('telephone')) return res.status(409).json({ message: 'Ce numéro de téléphone est déjà utilisé' })
+      if (String(champ).includes('email')) return res.status(409).json({ message: 'Cet email est déjà utilisé' })
+      return res.status(409).json({ message: `Valeur déjà utilisée (${champ})` })
+    }
+    return res.status(500).json({ message: 'Erreur serveur' })
   }
 }
 
@@ -100,6 +178,7 @@ export const listerClients = async (req, res) => {
         estEnfant: true,
         active: true,
         createdAt: true,
+        solde: true,
         credits: {
           select: {
             id: true,

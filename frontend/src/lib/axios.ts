@@ -1,6 +1,6 @@
 import axios from 'axios';
 
-const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:3001/api';
+const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:3002/api';
 
 export const axiosInstance = axios.create({
   baseURL: API_URL,
@@ -28,8 +28,9 @@ axiosInstance.interceptors.request.use(
 axiosInstance.interceptors.response.use(
   (response) => response,
   (error) => {
-    if (error.response?.status === 401) {
-      // Token expiré ou invalide
+    const isLoginRoute = error.config?.url?.includes('/auth/login');
+    if (error.response?.status === 401 && !isLoginRoute) {
+      // Token expiré ou invalide — pas sur la page de connexion
       localStorage.removeItem('authToken');
       localStorage.removeItem('switch_sab_user');
       window.location.href = '/login';

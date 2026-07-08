@@ -8,6 +8,7 @@ import { cn } from "@/lib/utils";
 import { Link } from "wouter";
 import { io } from "socket.io-client";
 import gerantService, { Session, Poste, Categorie } from "@/services/gerantService";
+import api from "@/services/api";
 
 function formatTime(secs: number) {
   const m = Math.floor(Math.max(0, secs) / 60);
@@ -141,7 +142,9 @@ export default function GerantDashboard() {
                             </div>
                             <span className="text-xs text-muted-foreground">{activeSession.duree?.libelle}</span>
                           </div>
-                          <div className="text-xs text-muted-foreground font-medium truncate">{activeSession.client?.pseudo}</div>
+                          <div className="flex items-center gap-1.5">
+                            <span className="text-xs text-muted-foreground font-medium truncate">{activeSession.client?.pseudo}</span>
+                          </div>
                         </div>
                         <Button
                           size="sm"

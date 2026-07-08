@@ -20,6 +20,7 @@ export interface Poste {
   image?: string;
   statut: 'LIBRE' | 'OCCUPE';
   categorieId: number;
+  zigbeeName?: string | null; // friendly_name de la prise Zigbee liée (null = pas encore appairée)
 }
 
 export interface Gerant {
@@ -42,13 +43,15 @@ export interface ConfigBonus {
   seuilDeblocage: number;
   validitejours: number;
   reductionInvite: number;
-  bonusParrain: number;
+  bonusParrain: number;  // montant FCFA offert au parrain
+  bonusFilleul: number;  // montant FCFA offert au filleul
 }
 
 export interface PromoConfig {
   salleId: number;
   reductionInvite: number;
   bonusParrain: number;
+  bonusFilleul: number;
 }
 
 export interface Coupon {
@@ -179,7 +182,7 @@ const adminService = {
     return res.data;
   },
 
-  updateConfigBonus: async (data: { ratioSecondes?: number; seuilDeblocage?: number; validitejours?: number; reductionInvite?: number; bonusParrain?: number }): Promise<ConfigBonus> => {
+  updateConfigBonus: async (data: { ratioSecondes?: number; seuilDeblocage?: number; validitejours?: number; reductionInvite?: number; bonusParrain?: number; bonusFilleul?: number }): Promise<ConfigBonus> => {
     const res = await api.patch('/admin/bonus/config', data);
     return res.data;
   },
@@ -191,7 +194,7 @@ const adminService = {
     return res.data;
   },
 
-  updatePromoConfig: async (data: { reductionInvite?: number; bonusParrain?: number }): Promise<PromoConfig> => {
+  updatePromoConfig: async (data: { reductionInvite?: number; bonusParrain?: number; bonusFilleul?: number }): Promise<PromoConfig> => {
     const res = await api.patch('/admin/promo/config', data);
     return res.data;
   },
@@ -228,6 +231,57 @@ const adminService = {
 
   envoyerPromotion: async (id: number): Promise<void> => {
     await api.post(`/admin/promotions/${id}/envoyer`);
+  },
+
+  // ─── ZIGBEE — appairage des prises ───────────────────────────────────────
+
+  /**
+   * Lance l'appairage Zigbee pour un poste.
+   * Le backend ouvre permit_join 120s et attend qu'une prise se connecte.
+   * Résout quand la prise est détectée et liée, rejette en timeout (408).
+   */
+  appairerPrise: async (posteId: number): Promise<{ success: boolean; zigbeeName: string; message: string }> => {
+    const res = await api.post(`/admin/zigbee/appairer/${posteId}`, {}, { timeout: 130_000 });
+    return res.data;
+  },
+
+  /**
+   * Retire le lien entre un poste et sa prise Zigbee.
+   */
+  desappairerPrise: async (posteId: number): Promise<void> => {
+    await api.delete(`/admin/zigbee/desappairer/${posteId}`);
+  },
+
+  /**
+   * Fait clignoter physiquement la LED de la prise liée au poste.
+   */
+  identifierPrise: async (posteId: number): Promise<void> => {
+    await api.post(`/admin/zigbee/identifier/${posteId}`);
+  },
+
+  getStatutContacts: async (): Promise<{ totalClients: number; nouveauxClients: number; dernierExport: string | null }> => {
+    const res = await api.get('/admin/contacts/statut');
+    return res.data;
+  },
+
+  exportContacts: async (): Promise<void> => {
+    const res = await api.get('/admin/contacts/export', { responseType: 'blob' });
+    const url = URL.createObjectURL(new Blob([res.data], { type: 'text/vcard' }));
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = 'clients_switch_sab.vcf';
+    a.click();
+    URL.revokeObjectURL(url);
+  },
+
+  exportNouveauxContacts: async (): Promise<void> => {
+    const res = await api.get('/admin/contacts/export/nouveaux', { responseType: 'blob' });
+    const url = URL.createObjectURL(new Blob([res.data], { type: 'text/vcard' }));
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = 'nouveaux_clients_switch_sab.vcf';
+    a.click();
+    URL.revokeObjectURL(url);
   },
 };
 

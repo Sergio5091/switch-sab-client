@@ -2,9 +2,14 @@ node_modules/
 .env
 prisma/migrations/
 
+<<<<<<< HEAD
 # Clés RSA — commenté pour les tests (à remettre en production réelle)
 # keys/*.pem
 
 # Scripts de test
 scripts/private-key-TEST-ONLY.pem
 scripts/licence-test.json
+=======
+# Clés RSA — ne jamais commiter
+# keys/*.pem
+>>>>>>> origin/dev/ok

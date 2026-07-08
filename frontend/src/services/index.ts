@@ -15,6 +15,8 @@ export type {
   Bonus,
   Coupon,
   Promotion,
+  PromoConfig,
+  ConfigBonus,
 } from './adminService';
 export type {
   Session,

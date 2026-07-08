@@ -136,20 +136,6 @@ export default function AdminCategories() {
                     <FormMessage />
                   </FormItem>
                 )} />
-                <FormField control={form.control} name="couleur" render={({ field }) => (
-                  <FormItem>
-                    <FormLabel>Couleur</FormLabel>
-                    <div className="flex gap-2 flex-wrap">
-                      {COLOR_OPTIONS.map(opt => (
-                        <button key={opt.value} type="button" onClick={() => field.onChange(opt.value)}
-                          className="w-8 h-8 rounded-lg border-2 transition-all"
-                          style={{ backgroundColor: opt.value, borderColor: field.value === opt.value ? "white" : "transparent" }}
-                        />
-                      ))}
-                    </div>
-                    <FormMessage />
-                  </FormItem>
-                )} />
                 <DialogFooter>
                   <Button type="submit" data-testid="button-submit-cat">{editing ? "Mettre à jour" : "Créer"}</Button>
                 </DialogFooter>

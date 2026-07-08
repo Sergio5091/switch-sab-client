@@ -1,6 +1,7 @@
 import bcrypt from 'bcryptjs'
 import jwt from 'jsonwebtoken'
 import prisma from '../../services/prismaClient.js'
+import { normaliserOuEchouer } from '../../services/phoneService.js'
 
 const signToken = (user) =>
   jwt.sign(
@@ -81,14 +82,27 @@ export const register = async (req, res) => {
       return res.status(409).json({ message: 'Ce pseudo est déjà utilisé' })
     }
 
-    const telExistant = await prisma.user.findUnique({ where: { telephone } })
+    // Récupérer la salle pour l'indicatif pays
+    const salle = await prisma.salle.findFirst()
+
+    // Normaliser le téléphone au format E.164
+    let telephoneNormalise = telephone
+    try {
+      telephoneNormalise = normaliserOuEchouer(telephone, salle?.indicatifPays ?? 'BJ')
+    } catch (phoneErr) {
+      return res.status(400).json({ message: phoneErr.message })
+    }
+
+    const telExistant = await prisma.user.findUnique({ where: { telephone: telephoneNormalise } })
     if (telExistant) {
       return res.status(409).json({ message: 'Ce numéro de téléphone est déjà utilisé' })
     }
 
     const hash = await bcrypt.hash(motDePasse, 10)
+
+    // Contexte mono-salle : rattacher automatiquement à la salle existante
     const user = await prisma.user.create({
-      data: { pseudo, telephone, motDePasse: hash, role: 'CLIENT' },
+      data: { pseudo, telephone: telephoneNormalise, motDePasse: hash, role: 'CLIENT', salleId: salle?.id ?? null },
     })
 
     const token = signToken(user)

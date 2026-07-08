@@ -4,16 +4,12 @@ import { Toaster } from "@/components/ui/toaster";
 import { TooltipProvider } from "@/components/ui/tooltip";
 import { AppProvider, useApp } from "@/contexts/AppContext";
 import { ThemeProvider } from "@/contexts/ThemeContext";
-import { ShieldAlert, X } from "lucide-react";
+import { ShieldAlert } from "lucide-react";
 
 import LoginPage from "@/pages/login";
 import LicencePage from "@/pages/admin/licence";
+import SetupSallePage from "@/pages/setup/salle";
 import NotFound from "@/pages/not-found";
-
-// import SuperAdminDashboard from "@/pages/superadmin/dashboard";
-// import SuperAdminSalles from "@/pages/superadmin/salles";
-// import SuperAdminAdmins from "@/pages/superadmin/admins";
-// import SuperAdminLicences from "@/pages/superadmin/licences";
 
 import AdminDashboard from "@/pages/admin/dashboard";
 import AdminCategories from "@/pages/admin/categories";
@@ -25,6 +21,7 @@ import AdminPromo from "@/pages/admin/promo";
 import AdminCoupons from "@/pages/admin/coupons";
 import AdminPromotions from "@/pages/admin/promotions";
 import AdminRapports from "@/pages/admin/rapports";
+import AdminSalle from "@/pages/admin/salle";
 
 import GerantDashboard from "@/pages/gerant/dashboard";
 import GerantSessionNew from "@/pages/gerant/session-new";
@@ -88,23 +85,26 @@ function FraudeAlert() {
 }
 
 function RoleRedirect() {
-  const { currentUser, licenceStatut } = useApp();
+  const { currentUser, licenceStatut, salleConfiguree, isLoading } = useApp();
+
+  if (isLoading) return null;
   if (!currentUser) return <Redirect to="/login" />;
-  
-  // Attendre que le statut licence soit chargé avant de rediriger
-  if (licenceStatut === null) return null;
-  
-  // Si la licence est explicitement invalide, rediriger vers la page de licence
-  if (licenceStatut.statut !== "ACTIVE") {
+
+  if (currentUser.role === "admin" && salleConfiguree === false) {
+    return <Redirect to="/setup/salle" />;
+  }
+
+  if (licenceStatut !== null && licenceStatut.statut !== "ACTIVE") {
     return <Redirect to="/admin/licence" />;
   }
-  
+
+  if (licenceStatut === null) return null;
+
   switch (currentUser.role) {
-    case "superadmin": return <Redirect to="/superadmin/dashboard" />;
-    case "admin": return <Redirect to="/admin/dashboard" />;
+    case "admin":  return <Redirect to="/admin/dashboard" />;
     case "gerant": return <Redirect to="/gerant/dashboard" />;
     case "client": return <Redirect to="/client/home" />;
-    default: return <Redirect to="/login" />;
+    default:       return <Redirect to="/login" />;
   }
 }
 
@@ -115,27 +115,33 @@ function ProtectedRoute({
   component: React.ComponentType;
   roles: string[];
 }) {
-  const { currentUser, licenceStatut } = useApp();
+  const { currentUser, licenceStatut, isLoading } = useApp();
+
+  if (isLoading) return null;
   if (!currentUser) return <Redirect to="/login" />;
   if (!roles.includes(currentUser.role)) return <RoleRedirect />;
   
-  // Pour les routes admin, vérifier la licence seulement si déjà chargée
-  if (roles.includes("admin") && licenceStatut !== null && licenceStatut.statut !== "ACTIVE") {
+  // Pour les routes admin, vérifier la licence
+  if (roles.includes("admin") && licenceStatut?.statut !== "ACTIVE") {
     return <Redirect to="/admin/licence" />;
   }
-  
+
+  if (licenceStatut === null) return null;
+
   return <Component />;
 }
 
 function LicenseRequiredRoute({ component: Component }: { component: React.ComponentType }) {
-  const { currentUser } = useApp();
+  const { currentUser, isLoading } = useApp();
+  if (isLoading) return null;
   if (!currentUser) return <Redirect to="/login" />;
   return <Component />;
 }
 
 function LoginGuard() {
-  const { currentUser } = useApp();
+  const { currentUser, isLoading } = useApp();
   const [location] = useLocation();
+  if (isLoading) return null;
   if (currentUser && location === "/login") return <RoleRedirect />;
   return <LoginPage />;
 }
@@ -146,24 +152,13 @@ function Router() {
       <Route path="/" component={RoleRedirect} />
       <Route path="/login" component={LoginGuard} />
 
-      {/* Licence activation route - accessible seulement si connecté */}
+      {/* Setup première installation */}
+      <Route path="/setup/salle" component={SetupSallePage} />
+
+      {/* Licence — accessible même si licence invalide */}
       <Route path="/admin/licence">
         {() => <LicenseRequiredRoute component={LicencePage} />}
       </Route>
-
-      {/* Super Admin
-      <Route path="/superadmin/dashboard">
-        {() => <ProtectedRoute component={SuperAdminDashboard} roles={["superadmin"]} />}
-      </Route>
-      <Route path="/superadmin/salles">
-        {() => <ProtectedRoute component={SuperAdminSalles} roles={["superadmin"]} />}
-      </Route>
-      <Route path="/superadmin/admins">
-        {() => <ProtectedRoute component={SuperAdminAdmins} roles={["superadmin"]} />}
-      </Route>
-      <Route path="/superadmin/licences">
-        {() => <ProtectedRoute component={SuperAdminLicences} roles={["superadmin"]} />}
-      </Route> */}
 
       {/* Admin */}
       <Route path="/admin/dashboard">
@@ -195,6 +190,9 @@ function Router() {
       </Route>
       <Route path="/admin/rapports">
         {() => <ProtectedRoute component={AdminRapports} roles={["admin"]} />}
+      </Route>
+      <Route path="/admin/salle">
+        {() => <ProtectedRoute component={AdminSalle} roles={["admin"]} />}
       </Route>
 
       {/* Gérant */}

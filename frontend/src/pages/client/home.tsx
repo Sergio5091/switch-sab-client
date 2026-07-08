@@ -1,7 +1,7 @@
 import { useState, useEffect } from "react";
 import ClientLayout from "@/layouts/ClientLayout";
 import { Link } from "wouter";
-import { DollarSign, Gift, Clock, Play, Square, ChevronRight, Ticket } from "lucide-react";
+import { Gift, Clock, Play, Square, ChevronRight, Ticket, Wallet, Plus, Sparkles, PauseCircle, PlayCircle } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "@/components/ui/dialog";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
@@ -21,7 +21,8 @@ function getTempsRestant(fin: string) {
 }
 
 interface Credit { solde: number; categorie: { id: number; nom: string } }
-interface ActiveSession { id: number; fin: string; estBonus: boolean; duree: { libelle: string; secondes: number } }
+interface ActiveSession { id: number; fin: string; estBonus: boolean; posteId: number; dureeId: number; tempsRestant: number; duree: { libelle: string; secondes: number; categorieId?: number }; poste?: { nom: string } }
+interface PausedSession { id: number; tempsRestant: number; estBonus: boolean; duree: { libelle: string; secondes: number }; poste: { nom: string; categorieId: number; categorie?: { nom: string } } }
 interface RecentSession { id: number; debut: string; estBonus: boolean; duree: { libelle: string; prix: number }; poste: { nom: string } }
 interface HomeData {
   pseudo: string;
@@ -29,9 +30,10 @@ interface HomeData {
   credits: Credit[];
   bonus: { solde: number; disponible: boolean } | null;
   activeSession: ActiveSession | null;
+  pausedSession: PausedSession | null;
   recentSessions: RecentSession[];
 }
-interface Duree { id: number; libelle: string; secondes: number; prix: number }
+interface Duree { id: number; libelle: string; secondes: number; prix: number; categorieId?: number }
 
 export default function ClientHome() {
   const { toast } = useToast();
@@ -44,11 +46,42 @@ export default function ClientHome() {
   const [durees, setDurees] = useState<Duree[]>([]);
   const [dureeId, setDureeId] = useState("");
   const [loading, setLoading] = useState(false);
+  const [useBonus, setUseBonus] = useState(false);
+  const [resumingId, setResumingId] = useState<number | null>(null);
+
+  // Prolongement de session
+  const [openProlong, setOpenProlong] = useState(false);
+  const [prolongDurees, setProlongDurees] = useState<Duree[]>([]);
+  const [prolongDureeId, setProlongDureeId] = useState("");
+  const [prolongLoading, setProlongLoading] = useState(false);
+  const [useBonusProlong, setUseBonusProlong] = useState(false);
 
   const reload = () => api.get('/client/home').then(r => setData(r.data)).catch(console.error);
 
   useEffect(() => { reload(); }, []);
   useEffect(() => { const i = setInterval(() => setTick(t => t + 1), 1000); return () => clearInterval(i); }, []);
+
+  // Écouter les événements Socket pour recharger automatiquement
+  useEffect(() => {
+    const socketUrl = new URL(import.meta.env.VITE_API_URL ?? 'http://localhost:3000/api').origin;
+    // Import dynamique pour éviter une erreur si socket.io-client n'est pas dispo
+    import('socket.io-client').then(({ io }) => {
+      const socket = io(socketUrl);
+      socket.on('session:end',  () => reload());
+      socket.on('session:stop', () => reload());
+      return () => socket.disconnect();
+    }).catch(() => {});
+  }, []);
+
+  // Recharger automatiquement quand le timer arrive à 0 (fallback sans socket)
+  useEffect(() => {
+    if (!data?.activeSession) return;
+    const restant = Math.max(0, Math.floor((new Date(data.activeSession.fin).getTime() - Date.now()) / 1000));
+    if (restant === 0) {
+      const t = setTimeout(() => reload(), 2000);
+      return () => clearTimeout(t);
+    }
+  }, [data?.activeSession?.fin, tick]);
 
   useEffect(() => {
     if (!openStart && !openAcheter) return;
@@ -61,32 +94,38 @@ export default function ClientHome() {
     api.get(`/client/categories/${catId}/durees`).then(r => setDurees(r.data)).catch(console.error);
   }, [catId]);
 
-  async function handleAcheterCredit() {
-    if (!catId || !dureeId) return;
-    setLoading(true);
-    try {
-      const res = await api.post('/client/acheter-credit', { categorieId: Number(catId), dureeId: Number(dureeId) });
-      toast({ title: res.data.message, description: `Solde restant : ${res.data.soldeRestant.toLocaleString()} FCFA` });
-      setOpenAcheter(false);
-      setCatId(""); setDureeId("");
-      reload();
-    } catch (err: any) {
-      toast({ title: err.response?.data?.message ?? "Erreur", variant: "destructive" });
-    } finally { setLoading(false); }
-  }
+  // Charger les durées de la catégorie de la session active pour le prolongement
+  useEffect(() => {
+    if (!openProlong || !data?.activeSession) return;
+    const session = data.activeSession;
+    // On récupère la catégorie via le poste de la session — on passe par l'API
+    api.get(`/client/session/${session.id}/categorie`)
+      .then(r => api.get(`/client/categories/${r.data.categorieId}/durees`))
+      .then(r => setProlongDurees(r.data))
+      .catch(() => {
+        // Fallback : charger toutes les catégories et prendre la première
+        api.get('/client/categories').then(r => {
+          if (r.data.length > 0) api.get(`/client/categories/${r.data[0].id}/durees`).then(d => setProlongDurees(d.data));
+        });
+      });
+    setProlongDureeId("");
+  }, [openProlong]);
 
   async function handleStart() {
     if (!catId || !dureeId) return;
     setLoading(true);
     try {
-      await api.post('/client/session/start', { categorieId: Number(catId), dureeId: Number(dureeId) });
+      await api.post('/client/session/start', { categorieId: Number(catId), dureeId: Number(dureeId), useBonus });
       toast({ title: "Session démarrée !" });
       setOpenStart(false);
       setCatId(""); setDureeId("");
       reload();
     } catch (err: any) {
       toast({ title: err.response?.data?.message ?? "Erreur", variant: "destructive" });
-    } finally { setLoading(false); }
+    } finally {
+      setLoading(false);
+      setUseBonus(false);
+    }
   }
 
   async function handleStop() {
@@ -94,19 +133,51 @@ export default function ClientHome() {
     setLoading(true);
     try {
       await api.post(`/client/session/${data.activeSession.id}/stop`);
-      toast({ title: "Session arrêtée" });
+      toast({ title: "Session mise en pause" });
       reload();
     } catch (err: any) {
       toast({ title: err.response?.data?.message ?? "Erreur", variant: "destructive" });
     } finally { setLoading(false); }
   }
 
+  async function handleReprendre(sessionId: number) {
+    setResumingId(sessionId);
+    try {
+      const res = await api.post(`/client/session/${sessionId}/reprendre`);
+      toast({ title: `Session reprise — ${res.data.posteNom}` });
+      reload();
+    } catch (err: any) {
+      toast({ title: err.response?.data?.message ?? "Erreur", variant: "destructive" });
+    } finally { setResumingId(null); }
+  }
+
+  async function handleProlong() {
+    if (!data?.activeSession || !prolongDureeId) return;
+    setProlongLoading(true);
+    try {
+      await api.post(`/client/session/${data.activeSession.id}/prolonger`, { dureeId: Number(prolongDureeId), useBonus: useBonusProlong });
+      toast({ title: "Session prolongée ✅" });
+      setOpenProlong(false);
+      setProlongDureeId("");
+      setUseBonusProlong(false);
+      reload();
+    } catch (err: any) {
+      toast({ title: err.response?.data?.message ?? "Erreur", variant: "destructive" });
+    } finally { setProlongLoading(false); }
+  }
+
   const activeSession = data?.activeSession ?? null;
   const tempsRestant = activeSession ? getTempsRestant(activeSession.fin) : 0;
-  const pct = activeSession ? (tempsRestant / activeSession.duree.secondes) * 100 : 0;
+  // Pour la barre, on utilise tempsRestant / tempsRestant initial (conservé dans la session)
+  const tempsInitial = activeSession?.tempsRestant ?? activeSession?.duree.secondes ?? 1;
+  const pct = activeSession ? (tempsRestant / tempsInitial) * 100 : 0;
   const urgentColor = pct < 10 ? "text-destructive" : pct < 25 ? "text-yellow-400" : "text-green-400";
   const selectedDuree = durees.find(d => d.id === Number(dureeId));
   const creditCat = data?.credits.find(c => c.categorie.id === Number(catId));
+  const bonusDisponible = (data?.bonus?.disponible === true) && (data.bonus.solde > 0);
+  const bonusSuffisantStart = bonusDisponible && !!selectedDuree && (data!.bonus!.solde >= selectedDuree.secondes);
+  const selectedProlongDuree = prolongDurees.find(d => d.id === Number(prolongDureeId));
+  const bonusSuffisantProlong = bonusDisponible && !!selectedProlongDuree && (data!.bonus!.solde >= selectedProlongDuree.secondes);
 
   return (
     <ClientLayout>
@@ -134,7 +205,7 @@ export default function ClientHome() {
           </div>
           <div className="bg-gradient-to-br from-orange-500/20 to-orange-500/5 border border-orange-500/30 rounded-2xl p-4">
             <div className="flex items-center gap-1.5 text-xs text-muted-foreground mb-1.5"><Gift size={11} /> Bonus</div>
-            <div className="text-2xl font-bold text-foreground">{Math.floor((data?.bonus?.solde ?? 0) / 60)}</div>
+            <div className="text-2xl font-bold text-foreground">{Math.floor((data?.bonus?.solde ?? 0)/60)}</div>
             <div className="text-xs text-muted-foreground">minutes offertes</div>
           </div>
         </div>
@@ -171,9 +242,14 @@ export default function ClientHome() {
             <div className="h-2 bg-muted rounded-full overflow-hidden mb-3">
               <div className={cn("h-full rounded-full transition-all", pct < 10 ? "bg-destructive" : pct < 25 ? "bg-yellow-400" : "bg-green-400")} style={{ width: `${pct}%` }} />
             </div>
-            <Button size="sm" variant="destructive" className="w-full gap-1.5" onClick={handleStop} disabled={loading}>
-              <Square size={13} /> Arrêter la session
-            </Button>
+            <div className="flex gap-2">
+              <Button size="sm" variant="outline" className="flex-1 gap-1.5 border-primary/30 text-primary hover:bg-primary/10" onClick={() => setOpenProlong(true)} disabled={loading}>
+                <Plus size={13} /> Prolonger
+              </Button>
+              <Button size="sm" variant="destructive" className="flex-1 gap-1.5" onClick={handleStop} disabled={loading}>
+                <Square size={13} /> Arrêter
+              </Button>
+            </div>
           </div>
         ) : (
           <div className="bg-card border border-border rounded-2xl p-5 text-center space-y-3">
@@ -184,11 +260,45 @@ export default function ClientHome() {
               <div className="text-sm font-medium text-foreground">Pas de session active</div>
               <div className="text-xs text-muted-foreground mt-0.5">Démarrez une session ou demandez à un gérant</div>
             </div>
-            <Button size="sm" className="gap-1.5" onClick={() => setOpenStart(true)}>
-              <Play size={13} /> Démarrer une session
-            </Button>
           </div>
         )}
+
+        {/* Session en pause */}
+        {!activeSession && data?.pausedSession && (
+          <div className="bg-card border border-yellow-500/30 rounded-2xl p-4">
+            <div className="flex items-center gap-2 mb-3">
+              <PauseCircle size={14} className="text-yellow-400" />
+              <span className="text-xs font-semibold text-yellow-400 uppercase tracking-wide">Session en pause</span>
+              {data.pausedSession.estBonus && (
+                <span className="ml-auto text-xs text-primary flex items-center gap-1"><Gift size={10} /> Bonus</span>
+              )}
+            </div>
+            <div className="flex items-center justify-between mb-3">
+              <div>
+                <div className="text-2xl font-mono font-bold text-yellow-400">
+                  {formatTime(data.pausedSession.tempsRestant)}
+                </div>
+                <div className="text-xs text-muted-foreground mt-0.5">
+                  {data.pausedSession.duree.libelle} — {data.pausedSession.poste.nom}
+                </div>
+              </div>
+              <Button
+                size="sm"
+                className="gap-1.5 bg-yellow-500 hover:bg-yellow-600 text-white"
+                onClick={() => handleReprendre(data.pausedSession!.id)}
+                disabled={resumingId === data.pausedSession.id}
+              >
+                <PlayCircle size={13} />
+                {resumingId === data.pausedSession.id ? "Reprise..." : "Reprendre"}
+              </Button>
+            </div>
+          </div>
+        )}
+
+        {/* Bouton démarrer — toujours visible */}
+        <Button className="w-full gap-1.5" onClick={() => setOpenStart(true)}>
+          <Play size={14} /> Démarrer une session
+        </Button>
 
         {/* Action coupon */}
         <Link href="/client/coupon">
@@ -231,75 +341,179 @@ export default function ClientHome() {
         )}
       </div>
 
-      {/* Dialog acheter minutes avec solde coupon */}
-      <Dialog open={openAcheter} onOpenChange={v => { if (!v) { setOpenAcheter(false); setCatId(""); setDureeId(""); } }}>
+      {/* Dialog prolonger session */}
+      <Dialog open={openProlong} onOpenChange={v => { if (!v) { setOpenProlong(false); setProlongDureeId(""); setUseBonusProlong(false); } }}>
         <DialogContent className="sm:max-w-sm">
-          <DialogHeader><DialogTitle>Acheter des minutes</DialogTitle></DialogHeader>
-          <div className="text-xs text-muted-foreground bg-muted/30 rounded-lg px-3 py-2 mb-2">
-            Solde disponible : <span className="font-semibold text-foreground">{(data?.soldeMonetaire ?? 0).toLocaleString()} FCFA</span>
-          </div>
+          <DialogHeader><DialogTitle className="flex items-center gap-2"><Plus size={16} className="text-primary" />Prolonger la session</DialogTitle></DialogHeader>
           <div className="space-y-3">
-            <Select value={catId} onValueChange={setCatId}>
-              <SelectTrigger><SelectValue placeholder="Choisir une catégorie" /></SelectTrigger>
-              <SelectContent>{categories.map(c => <SelectItem key={c.id} value={String(c.id)}>{c.nom}</SelectItem>)}</SelectContent>
-            </Select>
-            {catId && durees.length > 0 && (
-              <div className="grid grid-cols-2 gap-2">
-                {durees.sort((a, b) => a.secondes - b.secondes).map(d => {
-                  const suffisant = (data?.soldeMonetaire ?? 0) >= d.prix;
+            {/* Soldes disponibles */}
+            <div className="bg-muted/30 rounded-lg px-3 py-2.5 space-y-1 text-xs">
+              {(data?.soldeMonetaire ?? 0) > 0 && (
+                <div className="flex items-center gap-1.5 text-primary font-medium">
+                  <Wallet size={11} /> Solde : {(data?.soldeMonetaire ?? 0).toLocaleString()} F
+                </div>
+              )}
+              {data?.credits.filter(c => c.solde > 0).map(c => (
+                <div key={c.categorie.id} className="flex items-center gap-1.5 text-muted-foreground">
+                  <Clock size={11} /> {c.categorie.nom} : {Math.floor(c.solde / 60)} min
+                </div>
+              ))}
+              {bonusDisponible && (
+                <div className="flex items-center gap-1.5 text-orange-400 font-medium">
+                  <Sparkles size={11} /> Bonus : {Math.floor(data!.bonus!.solde / 60)} min offerts
+                </div>
+              )}
+            </div>
+
+            {/* Durées disponibles */}
+            {prolongDurees.length > 0 ? (
+              <div className="grid grid-cols-3 gap-2">
+                {prolongDurees.sort((a, b) => a.secondes - b.secondes).map(d => {
+                  const creditCatProlong = data?.credits.find(c => c.categorie.id === d.categorieId);
+                  const peutAvecMinutes = (creditCatProlong?.solde ?? 0) >= d.secondes;
+                  const peutAvecSolde = (data?.soldeMonetaire ?? 0) >= d.prix;
+                  const peutAvecBonus = bonusDisponible && (data!.bonus!.solde >= d.secondes);
+                  const disponible = peutAvecMinutes || peutAvecSolde || peutAvecBonus;
                   return (
-                    <button
-                      key={d.id}
-                      onClick={() => setDureeId(String(d.id))}
-                      disabled={!suffisant}
-                      className={`p-3 rounded-xl border text-sm transition-all disabled:opacity-40 disabled:cursor-not-allowed text-left ${dureeId === String(d.id) ? "bg-primary/10 border-primary/40 text-primary" : "bg-muted border-border text-foreground hover:border-primary/30"}`}
-                    >
+                    <button key={d.id} onClick={() => { if (disponible) { setProlongDureeId(String(d.id)); setUseBonusProlong(false); } }}
+                      disabled={!disponible}
+                      className={`p-3 rounded-xl border text-sm transition-all ${prolongDureeId === String(d.id) ? "bg-primary/10 border-primary/40 text-primary" : disponible ? "bg-muted border-border hover:border-primary/30" : "opacity-40 cursor-not-allowed bg-muted border-border"}`}>
                       <div className="font-bold">{d.libelle}</div>
-                      <div className="text-xs opacity-70">{d.prix.toLocaleString()} F</div>
+                      <div className="text-xs mt-0.5 opacity-70">{d.prix.toLocaleString()} F</div>
                     </button>
                   );
                 })}
               </div>
+            ) : (
+              <p className="text-xs text-muted-foreground text-center py-2">Chargement des durées...</p>
             )}
-            {selectedDuree && (
-              <div className="text-xs text-muted-foreground bg-muted/30 rounded-lg px-3 py-2">
-                Solde après achat : <span className="font-semibold text-foreground">{((data?.soldeMonetaire ?? 0) - selectedDuree.prix).toLocaleString()} FCFA</span>
+
+            {/* Toggle bonus — visible uniquement si bonus suffisant pour la durée sélectionnée */}
+            {bonusSuffisantProlong && (
+              <div className="rounded-xl border border-orange-500/30 bg-orange-500/5 p-3">
+                <p className="text-xs text-orange-400 font-medium mb-2 flex items-center gap-1.5">
+                  <Sparkles size={12} /> Vous avez assez de bonus pour cette durée
+                </p>
+                <div className="flex gap-2">
+                  <button
+                    onClick={() => setUseBonusProlong(false)}
+                    className={cn(
+                      "flex-1 py-2 px-3 rounded-lg border text-xs font-medium transition-all",
+                      !useBonusProlong ? "bg-primary/10 border-primary/40 text-primary" : "bg-muted border-border text-muted-foreground hover:border-primary/20"
+                    )}
+                  >
+                    <Wallet size={11} className="inline mr-1" /> Crédit / Solde
+                  </button>
+                  <button
+                    onClick={() => setUseBonusProlong(true)}
+                    className={cn(
+                      "flex-1 py-2 px-3 rounded-lg border text-xs font-medium transition-all",
+                      useBonusProlong ? "bg-orange-500/10 border-orange-500/40 text-orange-400" : "bg-muted border-border text-muted-foreground hover:border-orange-500/20"
+                    )}
+                  >
+                    <Sparkles size={11} className="inline mr-1" /> Utiliser mes bonus
+                  </button>
+                </div>
               </div>
             )}
           </div>
           <DialogFooter>
-            <Button onClick={handleAcheterCredit} disabled={!catId || !dureeId || loading}>
-              <DollarSign size={14} className="mr-1.5" /> Confirmer l'achat
+            <Button variant="ghost" onClick={() => { setOpenProlong(false); setUseBonusProlong(false); }}>Annuler</Button>
+            <Button
+              onClick={handleProlong}
+              disabled={prolongLoading || !prolongDureeId}
+              className={useBonusProlong ? "bg-orange-500 hover:bg-orange-600 text-white" : ""}
+            >
+              {useBonusProlong ? <Sparkles size={14} className="mr-1.5" /> : <Plus size={14} className="mr-1.5" />}
+              {prolongLoading ? "En cours..." : "Prolonger"}
             </Button>
           </DialogFooter>
         </DialogContent>
       </Dialog>
 
       {/* Dialog démarrer session */}
-      <Dialog open={openStart} onOpenChange={v => { if (!v) { setOpenStart(false); setCatId(""); setDureeId(""); } }}>
+      <Dialog open={openStart} onOpenChange={v => { if (!v) { setOpenStart(false); setCatId(""); setDureeId(""); setUseBonus(false); } }}>
         <DialogContent className="sm:max-w-sm">
           <DialogHeader><DialogTitle>Démarrer une session</DialogTitle></DialogHeader>
           <div className="space-y-3">
-            <Select value={catId} onValueChange={setCatId}>
+            <Select value={catId} onValueChange={v => { setCatId(v); setDureeId(""); setUseBonus(false); }}>
               <SelectTrigger><SelectValue placeholder="Choisir une catégorie" /></SelectTrigger>
               <SelectContent>{categories.map(c => <SelectItem key={c.id} value={String(c.id)}>{c.nom}</SelectItem>)}</SelectContent>
             </Select>
             {catId && (
-              <Select value={dureeId} onValueChange={setDureeId}>
+              <Select value={dureeId} onValueChange={v => { setDureeId(v); setUseBonus(false); }}>
                 <SelectTrigger><SelectValue placeholder="Choisir une durée" /></SelectTrigger>
                 <SelectContent>{durees.map(d => <SelectItem key={d.id} value={String(d.id)}>{d.libelle} — {d.prix.toLocaleString()} F</SelectItem>)}</SelectContent>
               </Select>
             )}
-            {selectedDuree && creditCat && (
-              <div className="text-xs text-muted-foreground bg-muted/30 rounded-lg px-3 py-2">
-                Crédit disponible : <span className="font-semibold text-foreground">{Math.floor(creditCat.solde / 60)} min</span>
-                {creditCat.solde < selectedDuree.secondes && <span className="text-destructive ml-2">— Insuffisant</span>}
+            {catId && (
+              <div className="text-xs bg-muted/30 rounded-lg px-3 py-2 space-y-1">
+                {creditCat && creditCat.solde > 0 ? (
+                  <div className="text-muted-foreground">
+                    Crédit : <span className="font-semibold text-foreground">{Math.floor(creditCat.solde / 60)} min</span>
+                    {selectedDuree && creditCat.solde < selectedDuree.secondes && (
+                      <span className="text-destructive ml-2">— Insuffisant</span>
+                    )}
+                  </div>
+                ) : (
+                  <div className="text-muted-foreground">Aucun crédit pour cette catégorie</div>
+                )}
+                {(data?.soldeMonetaire ?? 0) > 0 && (
+                  <div className="text-primary font-medium">
+                    Solde disponible : {(data?.soldeMonetaire ?? 0).toLocaleString()} F
+                    {selectedDuree && (data?.soldeMonetaire ?? 0) >= selectedDuree.prix && (creditCat?.solde ?? 0) < selectedDuree.secondes && (
+                      <span className="text-green-400 ml-2">→ Achat direct {selectedDuree.prix.toLocaleString()} F ✓</span>
+                    )}
+                  </div>
+                )}
+                {bonusDisponible && (
+                  <div className="text-orange-400 font-medium flex items-center gap-1">
+                    <Sparkles size={10} /> Bonus : {Math.floor(data!.bonus!.solde / 60)} min offerts
+                  </div>
+                )}
+              </div>
+            )}
+
+            {/* Toggle bonus — visible uniquement si bonus suffisant pour la durée sélectionnée */}
+            {bonusSuffisantStart && (
+              <div className="rounded-xl border border-orange-500/30 bg-orange-500/5 p-3">
+                <p className="text-xs text-orange-400 font-medium mb-2 flex items-center gap-1.5">
+                  <Sparkles size={12} /> Vous avez assez de bonus pour cette durée
+                </p>
+                <div className="flex gap-2">
+                  <button
+                    onClick={() => setUseBonus(false)}
+                    className={cn(
+                      "flex-1 py-2 px-3 rounded-lg border text-xs font-medium transition-all",
+                      !useBonus ? "bg-primary/10 border-primary/40 text-primary" : "bg-muted border-border text-muted-foreground hover:border-primary/20"
+                    )}
+                  >
+                    <Wallet size={11} className="inline mr-1" /> Crédit / Solde
+                  </button>
+                  <button
+                    onClick={() => setUseBonus(true)}
+                    className={cn(
+                      "flex-1 py-2 px-3 rounded-lg border text-xs font-medium transition-all",
+                      useBonus ? "bg-orange-500/10 border-orange-500/40 text-orange-400" : "bg-muted border-border text-muted-foreground hover:border-orange-500/20"
+                    )}
+                  >
+                    <Sparkles size={11} className="inline mr-1" /> Utiliser mes bonus
+                  </button>
+                </div>
               </div>
             )}
           </div>
           <DialogFooter>
-            <Button onClick={handleStart} disabled={!catId || !dureeId || loading || (!!selectedDuree && !!creditCat && creditCat.solde < selectedDuree.secondes)}>
-              <Play size={14} className="mr-1.5" /> Démarrer
+            <Button
+              onClick={handleStart}
+              disabled={
+                !catId || !dureeId || loading ||
+                (!useBonus && !!selectedDuree && (creditCat?.solde ?? 0) < selectedDuree.secondes && (data?.soldeMonetaire ?? 0) < selectedDuree.prix)
+              }
+              className={useBonus ? "bg-orange-500 hover:bg-orange-600 text-white" : ""}
+            >
+              {useBonus ? <Sparkles size={14} className="mr-1.5" /> : <Play size={14} className="mr-1.5" />}
+              Démarrer
             </Button>
           </DialogFooter>
         </DialogContent>
