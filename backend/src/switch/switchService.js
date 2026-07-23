@@ -13,9 +13,11 @@
 
 import prisma from '../services/prismaClient.js'
 import * as mock   from './mockSwitch.js'
-import * as usb    from './usbSwitch.js'
 import * as wifi   from './wifiSwitch.js'
 import * as zigbee from './zigbeeSwitch.js'
+// usbSwitch n'est PAS importé statiquement ici — serialport n'est pas disponible
+// en dev local (Windows) et n'est pas listé dans package.json.
+// L'import est fait dynamiquement uniquement si switchType === 'USB'.
 
 const getDriver = async () => {
   // Forcer le mock en développement si USE_MOCK_SWITCH=true
@@ -28,7 +30,7 @@ const getDriver = async () => {
 
   switch (salle.switchType) {
     case 'ZIGBEE': return zigbee
-    case 'USB':    return usb
+    case 'USB':    return await import('./usbSwitch.js')
     case 'WIFI':   return wifi
     default:       return mock
   }

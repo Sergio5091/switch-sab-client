@@ -1,0 +1,341 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Configuration WiFi — Switch SAB</title>
+  <style>
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+      background: #f5f5f5;
+      min-height: 100vh;
+      display: flex;
+      align-items: flex-start;
+      justify-content: center;
+      padding: 32px 16px;
+    }
+
+    .carte {
+      background: white;
+      border-radius: 16px;
+      padding: 28px 24px;
+      width: 100%;
+      max-width: 420px;
+      box-shadow: 0 2px 16px rgba(0,0,0,0.08);
+    }
+
+    .logo {
+      font-size: 2rem;
+      text-align: center;
+      margin-bottom: 8px;
+    }
+
+    h1 {
+      font-size: 1.25rem;
+      font-weight: 700;
+      text-align: center;
+      color: #111;
+      margin-bottom: 4px;
+    }
+
+    .sous-titre {
+      font-size: 0.875rem;
+      color: #666;
+      text-align: center;
+      margin-bottom: 24px;
+    }
+
+    /* ── Liste des réseaux ── */
+    #reseaux {
+      display: flex;
+      flex-direction: column;
+      gap: 8px;
+      margin-bottom: 16px;
+    }
+
+    .reseau {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      padding: 14px 16px;
+      border: 2px solid #e5e5e5;
+      border-radius: 10px;
+      cursor: pointer;
+      transition: border-color 0.15s, background 0.15s;
+      user-select: none;
+    }
+
+    .reseau:hover  { background: #f9f9f9; border-color: #ccc; }
+    .reseau.actif  { border-color: #2563eb; background: #eff6ff; }
+
+    .reseau-nom    { font-weight: 600; font-size: 0.95rem; color: #111; }
+    .reseau-infos  { display: flex; align-items: center; gap: 8px; font-size: 0.8rem; color: #666; }
+
+    .signal-barre  { display: flex; align-items: flex-end; gap: 2px; height: 14px; }
+    .signal-barre span {
+      display: inline-block;
+      width: 4px;
+      background: #ccc;
+      border-radius: 2px;
+    }
+    .signal-barre.fort    span { background: #16a34a; }
+    .signal-barre.moyen   span { background: #ca8a04; }
+    .signal-barre.faible  span { background: #dc2626; }
+
+    .cadenas { font-size: 0.8rem; }
+
+    /* ── Chargement ── */
+    .chargement {
+      text-align: center;
+      color: #888;
+      padding: 20px 0;
+      font-size: 0.9rem;
+    }
+
+    /* ── Formulaire mot de passe ── */
+    #form {
+      margin-top: 16px;
+      padding-top: 16px;
+      border-top: 1px solid #eee;
+    }
+
+    .reseau-choisi {
+      font-size: 0.85rem;
+      color: #555;
+      margin-bottom: 10px;
+    }
+
+    .reseau-choisi strong { color: #2563eb; }
+
+    input[type="password"] {
+      width: 100%;
+      padding: 12px 14px;
+      border: 2px solid #e5e5e5;
+      border-radius: 10px;
+      font-size: 1rem;
+      outline: none;
+      transition: border-color 0.15s;
+    }
+
+    input[type="password"]:focus { border-color: #2563eb; }
+
+    button {
+      width: 100%;
+      margin-top: 10px;
+      padding: 13px;
+      background: #2563eb;
+      color: white;
+      border: none;
+      border-radius: 10px;
+      font-size: 1rem;
+      font-weight: 600;
+      cursor: pointer;
+      transition: background 0.15s;
+    }
+
+    button:hover    { background: #1d4ed8; }
+    button:disabled { background: #93c5fd; cursor: not-allowed; }
+
+    /* ── Messages de retour ── */
+    #message {
+      margin-top: 16px;
+      padding: 12px 14px;
+      border-radius: 10px;
+      font-size: 0.9rem;
+      font-weight: 500;
+      display: none;
+    }
+
+    #message.succes {
+      background: #f0fdf4;
+      color: #166534;
+      border: 1px solid #bbf7d0;
+      display: block;
+    }
+
+    #message.erreur {
+      background: #fef2f2;
+      color: #991b1b;
+      border: 1px solid #fecaca;
+      display: block;
+    }
+
+    #message.info {
+      background: #eff6ff;
+      color: #1e40af;
+      border: 1px solid #bfdbfe;
+      display: block;
+    }
+  </style>
+</head>
+<body>
+  <div class="carte">
+    <div class="logo">📶</div>
+    <h1>Connexion WiFi</h1>
+    <p class="sous-titre">Sélectionnez le réseau WiFi de votre établissement</p>
+
+    <div id="reseaux">
+      <div class="chargement">Recherche des réseaux disponibles…</div>
+    </div>
+
+    <div id="form" style="display:none;">
+      <p class="reseau-choisi">Réseau sélectionné : <strong id="ssid-affiche"></strong></p>
+      <input type="password" id="password" placeholder="Mot de passe WiFi" autocomplete="current-password">
+      <button id="btn-connecter" onclick="connecter()">Se connecter</button>
+    </div>
+
+    <div id="message"></div>
+  </div>
+
+  <script>
+    let ssidChoisi = null
+
+    // ── Calcul de la force du signal pour l'affichage visuel ──────────────────
+    function classeSignal(signal) {
+      if (signal >= 70) return 'fort'
+      if (signal >= 40) return 'moyen'
+      return 'faible'
+    }
+
+    // Génère les 3 petites barres de signal (style mobile)
+    function barresSignal(signal) {
+      const cls = classeSignal(signal)
+      // 3 barres de hauteur croissante : 5px, 9px, 13px
+      return `
+        <div class="signal-barre ${cls}">
+          <span style="height:5px"></span>
+          <span style="height:9px"></span>
+          <span style="height:13px"></span>
+        </div>
+      `
+    }
+
+    // ── Chargement de la liste des réseaux ────────────────────────────────────
+    async function chargerReseaux() {
+      try {
+        const res = await fetch('/api/network/scan')
+        if (!res.ok) throw new Error('Réponse serveur invalide')
+        const reseaux = await res.json()
+
+        if (!reseaux.length) {
+          document.getElementById('reseaux').innerHTML =
+            '<div class="chargement">Aucun réseau détecté. <a href="#" onclick="chargerReseaux(); return false;">Réessayer</a></div>'
+          return
+        }
+
+        // Trier du plus fort signal au plus faible
+        const html = reseaux
+          .sort((a, b) => b.signal - a.signal)
+          .map((r) => {
+            // On échappe les guillemets dans le SSID pour éviter de casser l'attribut onclick
+            const ssidEscaped = r.ssid.replace(/\\/g, '\\\\').replace(/'/g, "\\'")
+            return `
+              <div class="reseau" onclick="choisir('${ssidEscaped}')" id="reseau-${encodeURIComponent(r.ssid)}">
+                <span class="reseau-nom">${r.ssid}</span>
+                <span class="reseau-infos">
+                  ${barresSignal(r.signal)}
+                  <span>${r.signal}%</span>
+                  <span class="cadenas">${r.securise ? '🔒' : '🔓'}</span>
+                </span>
+              </div>
+            `
+          })
+          .join('')
+
+        document.getElementById('reseaux').innerHTML = html
+      } catch (err) {
+        document.getElementById('reseaux').innerHTML =
+          '<div class="chargement">Impossible de charger les réseaux. <a href="#" onclick="chargerReseaux(); return false;">Réessayer</a></div>'
+      }
+    }
+
+    // ── Sélection d'un réseau ─────────────────────────────────────────────────
+    function choisir(ssid) {
+      ssidChoisi = ssid
+
+      // Retirer la sélection visuelle des autres réseaux
+      document.querySelectorAll('.reseau').forEach((el) => el.classList.remove('actif'))
+
+      // Mettre en surbrillance le réseau cliqué
+      const el = document.getElementById('reseau-' + encodeURIComponent(ssid))
+      if (el) el.classList.add('actif')
+
+      // Afficher le formulaire de mot de passe
+      document.getElementById('ssid-affiche').textContent = ssid
+      document.getElementById('form').style.display = 'block'
+      document.getElementById('password').value = ''
+      document.getElementById('password').focus()
+
+      // Masquer un éventuel message précédent
+      afficherMessage('', '')
+    }
+
+    // ── Tentative de connexion ────────────────────────────────────────────────
+    async function connecter() {
+      if (!ssidChoisi) return
+
+      const password = document.getElementById('password').value
+      const btn = document.getElementById('btn-connecter')
+
+      btn.disabled = true
+      btn.textContent = 'Connexion en cours…'
+      afficherMessage('Tentative de connexion à "' + ssidChoisi + '"…', 'info')
+
+      try {
+        const res = await fetch('/api/network/connect', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ ssid: ssidChoisi, password }),
+        })
+        const data = await res.json()
+
+        if (data.success) {
+          afficherMessage(
+            '✅ ' + data.message +
+            ' — Vous pouvez maintenant fermer cette page et vous reconnecter au réseau "' +
+            ssidChoisi + '" pour accéder à l\'application.',
+            'succes'
+          )
+          // Cacher le formulaire une fois connecté
+          document.getElementById('form').style.display = 'none'
+        } else {
+          afficherMessage('❌ ' + data.message, 'erreur')
+          btn.disabled = false
+          btn.textContent = 'Se connecter'
+        }
+      } catch (err) {
+        // Ce cas arrive souvent quand la connexion a en fait RÉUSSI :
+        // le Pi coupe son hotspot dès qu'il rejoint le vrai WiFi,
+        // ce qui coupe aussi la connexion du téléphone au hotspot.
+        afficherMessage(
+          '⚠️ La borne a peut-être déjà rejoint le réseau WiFi. ' +
+          'Reconnectez votre téléphone au réseau "' + ssidChoisi +
+          '" puis accédez à l\'application normalement.',
+          'info'
+        )
+        btn.disabled = false
+        btn.textContent = 'Se connecter'
+      }
+    }
+
+    // ── Affichage des messages (succes / erreur / info) ───────────────────────
+    function afficherMessage(texte, type) {
+      const el = document.getElementById('message')
+      el.textContent = texte
+      el.className = type   // 'succes', 'erreur', 'info', ou '' pour masquer
+    }
+
+    // Permettre la validation avec la touche Entrée
+    document.addEventListener('DOMContentLoaded', () => {
+      document.getElementById('password').addEventListener('keydown', (e) => {
+        if (e.key === 'Enter') connecter()
+      })
+    })
+
+    // Lancer le chargement au démarrage de la page
+    chargerReseaux()
+  </script>
+</body>
+</html>

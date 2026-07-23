@@ -89,10 +89,18 @@ export const appairerPrise = async (req, res) => {
           return
         }
 
-        // device_joined = une prise vient de s'appairer
-        if (event.type === 'device_joined') {
+        // Logger tous les events pour debug
+        logger.info(`[zigbee/appairer] bridge/event reçu : type="${event.type}" data=${JSON.stringify(event.data)}`)
+
+        // device_joined = nouvelle prise qui s'appairie
+        // device_announce = prise déjà connue qui rejoint le réseau après un reset
+        if (event.type === 'device_joined' || event.type === 'device_announce') {
           const ieeeAddress = event.data?.ieee_address
-          logger.info(`[zigbee/appairer] Appareil détecté : ${ieeeAddress}`)
+          if (!ieeeAddress) {
+            logger.warn('[zigbee/appairer] event reçu sans ieee_address, ignoré')
+            return
+          }
+          logger.info(`[zigbee/appairer] Appareil détecté (${event.type}) : ${ieeeAddress}`)
           clearTimeout(timer)
           resolve(ieeeAddress)
         }

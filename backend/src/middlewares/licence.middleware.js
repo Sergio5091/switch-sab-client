@@ -58,7 +58,8 @@ export const requireLicence = (req, res, next) => {
     url === '/api/auth/login'      ||
     url === '/api/auth/register'   ||
     url.startsWith('/api/licence') ||
-    url.startsWith('/api/setup')
+    url.startsWith('/api/setup')   ||
+    url.startsWith('/api/network')
 
   if (exemptee) return next()
 

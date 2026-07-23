@@ -18,6 +18,7 @@ import clientRoutes   from './modules/client/client.routes.js'
 import rapportsRoutes from './modules/rapports/rapports.routes.js'
 import licenceRoutes  from './modules/licence/licence.routes.js'
 import setupRoutes    from './modules/setup/setup.routes.js'
+import networkRoutes  from './modules/network/network.routes.js'
 
 
 const app = express()
@@ -25,6 +26,15 @@ const app = express()
 app.use(cors(corsOptions))
 app.use(express.json())
 app.use(express.urlencoded({ extended: true }))
+
+// Page HTML statique de configuration WiFi — accessible sans auth ni licence
+app.use('/wifi-setup', express.static('public/wifi-setup'))
+
+// Routes réseau : CORS ouvert (pas d'auth, pas de licence, accessible depuis le hotspot)
+app.use('/api/network', cors(), networkRoutes)
+
+// Fichiers statiques — page de configuration WiFi (accessible sans auth ni licence)
+app.use('/wifi-setup', express.static('public/wifi-setup'))
 
 // ─── Nettoyage au démarrage ───────────────────────────────────────────────────
 // Si le serveur redémarre avec des sessions ACTIVE en base, on les marque ARRETEE
