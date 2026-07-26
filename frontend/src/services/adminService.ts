@@ -266,6 +266,22 @@ const adminService = {
     await api.post(`/admin/zigbee/identifier/${posteId}`);
   },
 
+  /**
+   * Verrouille le bouton physique de la prise (child_lock: LOCK).
+   * Le bouton sur la prise ne répond plus aux appuis manuels.
+   */
+  verrouillerPrise: async (posteId: number): Promise<void> => {
+    await api.post(`/admin/zigbee/verrouiller/${posteId}`);
+  },
+
+  /**
+   * Déverrouille le bouton physique de la prise (child_lock: UNLOCK).
+   * Le bouton sur la prise redevient fonctionnel manuellement.
+   */
+  deverrouillerPrise: async (posteId: number): Promise<void> => {
+    await api.post(`/admin/zigbee/deverrouiller/${posteId}`);
+  },
+
   getStatutContacts: async (): Promise<{ totalClients: number; nouveauxClients: number; dernierExport: string | null }> => {
     const res = await api.get('/admin/contacts/statut');
     return res.data;

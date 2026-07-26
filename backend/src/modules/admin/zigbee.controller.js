@@ -152,13 +152,26 @@ export const appairerPrise = async (req, res) => {
     // ── 8. Configuration initiale de la prise (après rename, délai 2s) ────
     // On attend que Z2M enregistre le nouveau nom avant d'envoyer des commandes.
     // power_outage_memory: 'off' → la prise reste éteinte après une coupure de courant
+    // state: 'OFF'              → éteindre immédiatement, pas de courant sans session
+    // child_lock: 'LOCK'        → verrouiller le bouton physique dès l'appairage
     setTimeout(async () => {
       try {
-        const { configurerCoupure } = await import('../../switch/zigbeeSwitch.js')
+        const {
+          configurerCoupure,
+          eteindrePoste,
+          verrouillerPoste
+        } = await import('../../switch/zigbeeSwitch.js')
+
         await configurerCoupure(posteId)
         logger.info(`[zigbee/appairer] Poste ${posteId} power_outage_memory configuré`)
+
+        await eteindrePoste(posteId)
+        logger.info(`[zigbee/appairer] Poste ${posteId} éteint immédiatement après appairage`)
+
+        await verrouillerPoste(posteId)
+        logger.info(`[zigbee/appairer] Poste ${posteId} bouton physique verrouillé (LOCK)`)
       } catch (e) {
-        logger.warn(`[zigbee/appairer] Erreur config coupure : ${e.message}`)
+        logger.warn(`[zigbee/appairer] Erreur config initiale : ${e.message}`)
       }
     }, 2000)
 
@@ -216,12 +229,82 @@ export const desappairerPrise = async (req, res) => {
     return res.status(404).json({ message: 'Poste introuvable' })
   }
 
+  // Déverrouiller le bouton physique avant de délier —
+  // sinon la prise reste verrouillée indéfiniment une fois déliée de l'application
+  try {
+    const { deverrouillerPoste } = await import('../../switch/zigbeeSwitch.js')
+    await deverrouillerPoste(posteId)
+    logger.info(`[zigbee/desappairer] Poste ${posteId} bouton physique déverrouillé (UNLOCK)`)
+  } catch (e) {
+    logger.warn(`[zigbee/desappairer] Impossible de déverrouiller poste ${posteId} : ${e.message}`)
+  }
+
   await prisma.poste.update({
     where: { id: posteId },
     data: { zigbeeName: null }
   })
 
   return res.json({ success: true, message: `Prise déliée du poste "${poste.nom}"` })
+}
+
+/**
+ * POST /api/admin/zigbee/verrouiller/:posteId
+ * Verrouille le bouton physique de la prise (child_lock: LOCK).
+ * Personne ne peut allumer/éteindre la prise manuellement.
+ */
+export const verrouillerPrise = async (req, res) => {
+  const posteId = Number(req.params.posteId)
+
+  const poste = await prisma.poste.findFirst({
+    where: { id: posteId },
+    include: { categorie: true }
+  })
+
+  if (!poste || poste.categorie.salleId !== req.user.salle_id) {
+    return res.status(404).json({ message: 'Poste introuvable' })
+  }
+
+  if (!poste.zigbeeName) {
+    return res.status(400).json({ message: 'Ce poste n\'a pas de prise Zigbee associée' })
+  }
+
+  try {
+    const { verrouillerPoste } = await import('../../switch/zigbeeSwitch.js')
+    await verrouillerPoste(posteId)
+    return res.json({ success: true, message: `Bouton physique verrouillé sur "${poste.zigbeeName}"` })
+  } catch (err) {
+    return res.status(500).json({ success: false, message: err.message })
+  }
+}
+
+/**
+ * POST /api/admin/zigbee/deverrouiller/:posteId
+ * Déverrouille le bouton physique de la prise (child_lock: UNLOCK).
+ * Permet à nouveau d'allumer/éteindre la prise manuellement.
+ */
+export const deverrouillerPrise = async (req, res) => {
+  const posteId = Number(req.params.posteId)
+
+  const poste = await prisma.poste.findFirst({
+    where: { id: posteId },
+    include: { categorie: true }
+  })
+
+  if (!poste || poste.categorie.salleId !== req.user.salle_id) {
+    return res.status(404).json({ message: 'Poste introuvable' })
+  }
+
+  if (!poste.zigbeeName) {
+    return res.status(400).json({ message: 'Ce poste n\'a pas de prise Zigbee associée' })
+  }
+
+  try {
+    const { deverrouillerPoste } = await import('../../switch/zigbeeSwitch.js')
+    await deverrouillerPoste(posteId)
+    return res.json({ success: true, message: `Bouton physique déverrouillé sur "${poste.zigbeeName}"` })
+  } catch (err) {
+    return res.status(500).json({ success: false, message: err.message })
+  }
 }
 
 /**

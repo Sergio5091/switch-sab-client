@@ -9,7 +9,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { z } from "zod";
-import { Plus, Pencil, Trash2, Monitor, Tag, Wifi, WifiOff, Loader2, X, MapPin } from "lucide-react";
+import { Plus, Pencil, Trash2, Monitor, Tag, Wifi, WifiOff, Loader2, X, MapPin, Lock, Unlock } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
 import { Badge } from "@/components/ui/badge";
 import adminService, { Poste, Categorie } from "@/services/adminService";
@@ -250,6 +250,41 @@ export default function AdminPostes() {
                                       <X size={11} className="mr-1" /> Délier
                                     </Button>
                                   </div>
+                                </div>
+                                {/* Contrôle manuel du bouton physique */}
+                                <div className="flex gap-1 mt-1">
+                                  <Button
+                                    variant="outline"
+                                    size="sm"
+                                    className="flex-1 gap-1 text-xs h-7 border-amber-500/30 text-amber-500 hover:bg-amber-500/10"
+                                    title="Verrouille le bouton physique de la prise — plus aucun appui manuel possible"
+                                    onClick={async () => {
+                                      try {
+                                        await adminService.verrouillerPrise(p.id)
+                                        toast({ title: `🔒 Bouton verrouillé — "${p.zigbeeName}"` })
+                                      } catch (err: any) {
+                                        toast({ title: err.response?.data?.message ?? "Erreur", variant: "destructive" })
+                                      }
+                                    }}
+                                  >
+                                    <Lock size={11} /> Verrouiller
+                                  </Button>
+                                  <Button
+                                    variant="outline"
+                                    size="sm"
+                                    className="flex-1 gap-1 text-xs h-7 border-blue-500/30 text-blue-400 hover:bg-blue-500/10"
+                                    title="Déverrouille le bouton physique — la prise répond à nouveau aux appuis manuels"
+                                    onClick={async () => {
+                                      try {
+                                        await adminService.deverrouillerPrise(p.id)
+                                        toast({ title: `🔓 Bouton déverrouillé — "${p.zigbeeName}"` })
+                                      } catch (err: any) {
+                                        toast({ title: err.response?.data?.message ?? "Erreur", variant: "destructive" })
+                                      }
+                                    }}
+                                  >
+                                    <Unlock size={11} /> Déverrouiller
+                                  </Button>
                                 </div>
                               </div>
                             )}
