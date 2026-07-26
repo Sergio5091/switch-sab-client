@@ -58,6 +58,7 @@ export interface Poste {
   statut: 'LIBRE' | 'OCCUPE';
   categorieId: number;
   categorie: { id: number; nom: string };
+  zigbeeName?: string | null;
 }
 
 export interface RapportJour {
@@ -198,6 +199,11 @@ const gerantService = {
 
   getPostesDisponibles: async (): Promise<Poste[]> => {
     const res = await api.get('/gerant/postes');
+    return res.data;
+  },
+
+  getSalle: async (): Promise<{ id: number; nom: string; switchType: string }> => {
+    const res = await api.get('/admin/salle');
     return res.data;
   },
 

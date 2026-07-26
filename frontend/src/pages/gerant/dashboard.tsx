@@ -25,18 +25,26 @@ export default function GerantDashboard() {
   const [postes, setPostes] = useState<Poste[]>([]);
   const [sessions, setSessions] = useState<Session[]>([]);
   const [categories, setCategories] = useState<Categorie[]>([]);
+  const [switchType, setSwitchType] = useState<string>('MOCK');
   const [tick, setTick] = useState(0);
 
   const load = useCallback(async () => {
-    const [p, s, c] = await Promise.all([
+    const [p, s, c, salle] = await Promise.all([
       gerantService.getPostesDisponibles(),
       gerantService.getSessions(),
       gerantService.getCategories(),
+      gerantService.getSalle().catch(() => ({ switchType: 'MOCK' })),
     ]);
     setPostes(p);
     setSessions(s);
     setCategories(c);
+    setSwitchType(salle.switchType);
   }, []);
+
+  // Chargement initial au montage
+  useEffect(() => {
+    load();
+  }, [load]);
 
   // Timer local — force re-render chaque seconde
   useEffect(() => {
@@ -68,7 +76,11 @@ export default function GerantDashboard() {
   const activeSessions = sessions.filter(s => s.statut === 'ACTIVE');
   const catGroups = categories.map(cat => ({
     cat,
-    postes: postes.filter(p => p.categorieId === cat.id),
+    // En mode ZIGBEE, n'afficher que les postes avec une prise appairée (zigbeeName non null)
+    postes: postes.filter(p =>
+      p.categorieId === cat.id &&
+      (switchType !== 'ZIGBEE' || !!p.zigbeeName)
+    ),
   })).filter(g => g.postes.length > 0);
 
   return (
