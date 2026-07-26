@@ -5,7 +5,7 @@
 sleep 20
 
 # List active WiFi connections, excluding our own fallback hotspot
-CONNECTED=$(nmcli -t -f TYPE,STATE con show --active | grep "wifi" | grep -v "SwitchSAB-Setup")
+CONNECTED=$(nmcli -t -f TYPE,STATE con show --active | grep -E "wifi|802-11-wireless" | grep -v "SwitchSAB-Setup")
 
 if [ -z "$CONNECTED" ]; then
   echo "No Station connection detected - activating fallback hotspot"
