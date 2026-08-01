@@ -207,6 +207,11 @@ const gerantService = {
     return res.data;
   },
 
+  reappairerPrise: async (posteId: number): Promise<{ success: boolean; zigbeeName: string; message: string }> => {
+    const res = await api.post(`/gerant/zigbee/appairer/${posteId}`, {}, { timeout: 130_000 });
+    return res.data;
+  },
+
   // ─── RAPPORT ──────────────────────────────────────────────────────────────
 
   getRapportJour: async (): Promise<RapportJour> => {

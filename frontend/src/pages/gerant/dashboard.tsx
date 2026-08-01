@@ -1,7 +1,7 @@
 import { useState, useEffect, useCallback } from "react";
 import AdminLayout from "@/layouts/AdminLayout";
 import { Button } from "@/components/ui/button";
-import { Monitor, Square, Play, Clock } from "lucide-react";
+import { Monitor, Square, Play, Clock, Wifi, Loader2 } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
 import { Badge } from "@/components/ui/badge";
 import { cn } from "@/lib/utils";
@@ -27,6 +27,8 @@ export default function GerantDashboard() {
   const [categories, setCategories] = useState<Categorie[]>([]);
   const [switchType, setSwitchType] = useState<string>('MOCK');
   const [tick, setTick] = useState(0);
+  // Map posteId → true si réappairage en cours
+  const [reappairingIds, setReappairingIds] = useState<Record<number, boolean>>({});
 
   const load = useCallback(async () => {
     const [p, s, c, salle] = await Promise.all([
@@ -70,6 +72,19 @@ export default function GerantDashboard() {
       load();
     } catch (err: any) {
       toast({ title: err.response?.data?.message ?? "Erreur", variant: "destructive" });
+    }
+  }
+
+  async function handleReappairer(poste: Poste) {
+    setReappairingIds(prev => ({ ...prev, [poste.id]: true }));
+    try {
+      const result = await gerantService.reappairerPrise(poste.id);
+      toast({ title: `✅ Prise réappairée sur "${poste.nom}" — ${result.zigbeeName}` });
+      load();
+    } catch (err: any) {
+      toast({ title: err.response?.data?.message ?? "Erreur réappairage", variant: "destructive" });
+    } finally {
+      setReappairingIds(prev => ({ ...prev, [poste.id]: false }));
     }
   }
 
@@ -169,11 +184,28 @@ export default function GerantDashboard() {
                         </Button>
                       </>
                     ) : (
-                      <Link href="/gerant/session/new">
-                        <Button size="sm" variant="outline" className="w-full gap-1.5 text-xs border-primary/30 text-primary hover:bg-primary/10" data-testid={`button-start-poste-${poste.id}`}>
-                          <Play size={11} /> Démarrer
-                        </Button>
-                      </Link>
+                      <div className="space-y-2">
+                        <Link href="/gerant/session/new">
+                          <Button size="sm" variant="outline" className="w-full gap-1.5 text-xs border-primary/30 text-primary hover:bg-primary/10" data-testid={`button-start-poste-${poste.id}`}>
+                            <Play size={11} /> Démarrer
+                          </Button>
+                        </Link>
+                        {switchType === 'ZIGBEE' && (
+                          <Button
+                            size="sm"
+                            variant="ghost"
+                            className="w-full gap-1.5 text-xs text-muted-foreground hover:text-amber-500"
+                            disabled={!!reappairingIds[poste.id]}
+                            onClick={() => handleReappairer(poste)}
+                            title="Réappairer la prise Zigbee de ce poste (prise remplacée ou réinitialisée)"
+                          >
+                            {reappairingIds[poste.id]
+                              ? <><Loader2 size={11} className="animate-spin" /> En attente de la prise…</>
+                              : <><Wifi size={11} /> Réappairer</>
+                            }
+                          </Button>
+                        )}
+                      </div>
                     )}
                   </div>
                 );

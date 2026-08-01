@@ -267,6 +267,14 @@ const adminService = {
   },
 
   /**
+   * Lit l'état actuel de la prise (state + child_lock) depuis Z2M.
+   */
+  statutPrise: async (posteId: number): Promise<{ posteId: number; state: string; childLock: boolean }> => {
+    const res = await api.get(`/admin/zigbee/statut/${posteId}`);
+    return res.data;
+  },
+
+  /**
    * Verrouille le bouton physique de la prise (child_lock: LOCK).
    * Le bouton sur la prise ne répond plus aux appuis manuels.
    */

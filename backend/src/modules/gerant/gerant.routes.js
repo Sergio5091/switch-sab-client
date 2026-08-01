@@ -6,9 +6,10 @@ import { creerRecharge, listerRechargesEnAttente, listerHistoriqueRecharges, val
 import { demarrerSession, arreterSession, listerSessions, detailSession, prolongerSession } from './sessions.controller.js'
 import { rapportJour, rapportPeriode } from './rapport.controller.js'
 import { listerCategories } from '../admin/categories.controller.js'
-import { listerPostes } from '../admin/postes.controller.js'
+import { listerPostesGerant } from '../admin/postes.controller.js'
 import { listerDurees } from '../admin/durees.controller.js'
 import { genererCoupons, listerCoupons } from '../admin/coupons.controller.js'
+import { appairerPrise } from '../admin/zigbee.controller.js'
 
 const router = Router()
 
@@ -37,7 +38,12 @@ router.post('/sessions/:id/prolonger', prolongerSession)
 // ─── CATALOGUE (lecture seule) ────────────────────────────────────────────
 router.get('/categories',              listerCategories)
 router.get('/categories/:id/durees',   listerDurees)
-router.get('/postes',                  listerPostes)
+router.get('/postes',                  listerPostesGerant)
+
+// ─── ZIGBEE — réappairage (postes déjà appairés uniquement) ──────────────
+// Le garde-fou dans appairerPrise vérifie que req.user.role === 'GERANT'
+// ne peut réappairer qu'un poste ayant déjà un zigbeeName.
+router.post('/zigbee/appairer/:posteId', appairerPrise)
 
 // ─── COUPONS (génération + lecture seule, pas de modif/suppression) ───────
 router.post('/coupons/generer',  genererCoupons)

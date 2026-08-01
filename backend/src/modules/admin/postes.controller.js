@@ -40,6 +40,30 @@ export const listerPostes = async (req, res) => {
   }
 }
 
+// GET /gerant/postes — uniquement les postes appairés si salle en mode ZIGBEE
+export const listerPostesGerant = async (req, res) => {
+  try {
+    const salle = await prisma.salle.findFirst({
+      where: { id: req.user.salle_id }
+    })
+
+    const whereClause = {
+      categorie: { salleId: req.user.salle_id },
+      ...(salle?.switchType === 'ZIGBEE' ? { zigbeeName: { not: null } } : {})
+    }
+
+    const postes = await prisma.poste.findMany({
+      where: whereClause,
+      include: { categorie: { select: { id: true, nom: true } } },
+      orderBy: { id: 'asc' }
+    })
+    return res.json(postes)
+  } catch (err) {
+    console.error('[gerant/postes GET]', err)
+    return res.status(500).json({ message: 'Erreur serveur' })
+  }
+}
+
 // PATCH /admin/postes/:id
 export const modifierPoste = async (req, res) => {
   const id = Number(req.params.id)

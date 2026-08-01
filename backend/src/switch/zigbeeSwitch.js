@@ -208,6 +208,43 @@ export const getStatutPoste = async (posteId) => {
 }
 
 /**
+ * Lit l'état complet de la prise (state + child_lock) depuis Z2M.
+ * Utilisé par l'interface admin pour afficher l'état réel du bouton physique.
+ * Timeout 3s si aucune réponse.
+ */
+export const getStatutComplet = async (posteId) => {
+  const zigbeeName = await getZigbeeName(posteId)
+
+  return new Promise((resolve) => {
+    const topic = `${Z2M_TOPIC}/${zigbeeName}`
+    const mqttClient = getClient()
+
+    const timer = setTimeout(() => {
+      mqttClient.unsubscribe(topic)
+      resolve({ posteId, state: 'INCONNU', childLock: false })
+    }, 3000)
+
+    mqttClient.subscribe(topic, { qos: 0 }, () => {
+      mqttClient.once('message', (t, msg) => {
+        if (t !== topic) return
+        clearTimeout(timer)
+        mqttClient.unsubscribe(topic)
+        try {
+          const data = JSON.parse(msg.toString())
+          resolve({
+            posteId,
+            state: data.state === 'ON' ? 'ON' : 'OFF',
+            childLock: data.child_lock === 'LOCK',
+          })
+        } catch {
+          resolve({ posteId, state: 'INCONNU', childLock: false })
+        }
+      })
+    })
+  })
+}
+
+/**
  * Retourne les statuts de tous les postes appairés.
  */
 export const getAllStatuts = async () => {

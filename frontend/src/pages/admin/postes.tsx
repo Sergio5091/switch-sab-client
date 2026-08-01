@@ -39,16 +39,26 @@ export default function AdminPostes() {
   // Map posteId → état d'appairage
   const [pairingStates, setPairingStates] = useState<Record<number, PairingState>>({});
   const [switchType, setSwitchType] = useState<string>('MOCK');
+  // Map posteId → état child_lock (null = pas encore chargé, true = LOCK, false = UNLOCK)
+  const [lockStates, setLockStates] = useState<Record<number, boolean | null>>({});
 
   useEffect(() => {
-    adminService.getPostes().then(setPostes).catch(() =>
+    adminService.getPostes().then((data) => {
+      setPostes(data);
+      // Charger l'état child_lock pour chaque poste appairé (switchType ZIGBEE)
+      data.forEach((p) => {
+        if (p.zigbeeName) {
+          adminService.statutPrise(p.id)
+            .then((s) => setLockStates(prev => ({ ...prev, [p.id]: s.childLock })))
+            .catch(() => setLockStates(prev => ({ ...prev, [p.id]: null })));
+        }
+      });
+    }).catch(() =>
       toast({ title: "Erreur chargement postes", variant: "destructive" })
     );
     adminService.getCategories().then(setCategories);
     adminService.getSalle().then(s => setSwitchType(s.switchType)).catch(() => {});
-  }, []);
-
-  const form = useForm<FormValues>({
+  }, []);  const form = useForm<FormValues>({
     resolver: zodResolver(schema),
     defaultValues: { nom: "", categorieId: "" },
   });
@@ -228,16 +238,9 @@ export default function AdminPostes() {
                                     <Button
                                       variant="ghost"
                                       size="sm"
-                                      className="text-muted-foreground hover:text-primary h-6 px-1.5 text-xs"
-                                      title="Faire clignoter la prise pour l'identifier"
-                                      onClick={async () => {
-                                        try {
-                                          await adminService.identifierPrise(p.id)
-                                          toast({ title: `Prise "${p.zigbeeName}" clignote` })
-                                        } catch {
-                                          toast({ title: "Erreur identification", variant: "destructive" })
-                                        }
-                                      }}
+                                      className="text-muted-foreground hover:text-muted-foreground h-6 px-1.5 text-xs cursor-default opacity-50"
+                                      title="Ce modèle de prise ne supporte pas l'identification par clignotement"
+                                      onClick={() => toast({ title: "Non supporté par ce modèle de prise" })}
                                     >
                                       <MapPin size={11} className="mr-1" /> Localiser
                                     </Button>
@@ -251,40 +254,51 @@ export default function AdminPostes() {
                                     </Button>
                                   </div>
                                 </div>
-                                {/* Contrôle manuel du bouton physique */}
-                                <div className="flex gap-1 mt-1">
-                                  <Button
-                                    variant="outline"
-                                    size="sm"
-                                    className="flex-1 gap-1 text-xs h-7 border-amber-500/30 text-amber-500 hover:bg-amber-500/10"
-                                    title="Verrouille le bouton physique de la prise — plus aucun appui manuel possible"
-                                    onClick={async () => {
-                                      try {
-                                        await adminService.verrouillerPrise(p.id)
-                                        toast({ title: `🔒 Bouton verrouillé — "${p.zigbeeName}"` })
-                                      } catch (err: any) {
-                                        toast({ title: err.response?.data?.message ?? "Erreur", variant: "destructive" })
-                                      }
-                                    }}
-                                  >
-                                    <Lock size={11} /> Verrouiller
-                                  </Button>
-                                  <Button
-                                    variant="outline"
-                                    size="sm"
-                                    className="flex-1 gap-1 text-xs h-7 border-blue-500/30 text-blue-400 hover:bg-blue-500/10"
-                                    title="Déverrouille le bouton physique — la prise répond à nouveau aux appuis manuels"
-                                    onClick={async () => {
-                                      try {
-                                        await adminService.deverrouillerPrise(p.id)
-                                        toast({ title: `🔓 Bouton déverrouillé — "${p.zigbeeName}"` })
-                                      } catch (err: any) {
-                                        toast({ title: err.response?.data?.message ?? "Erreur", variant: "destructive" })
-                                      }
-                                    }}
-                                  >
-                                    <Unlock size={11} /> Déverrouiller
-                                  </Button>
+                                {/* Contrôle manuel du bouton physique — 1 bouton toggle */}
+                                <div className="mt-1">
+                                  {lockStates[p.id] === null || lockStates[p.id] === undefined ? (
+                                    <Button variant="outline" size="sm" className="w-full text-xs h-7" disabled>
+                                      <Loader2 size={11} className="mr-1 animate-spin" /> Chargement…
+                                    </Button>
+                                  ) : lockStates[p.id] ? (
+                                    // État actuel : LOCK → bouton pour déverrouiller
+                                    <Button
+                                      variant="outline"
+                                      size="sm"
+                                      className="w-full gap-1 text-xs h-7 border-blue-500/30 text-blue-400 hover:bg-blue-500/10"
+                                      title="Déverrouille le bouton physique — la prise répond à nouveau aux appuis manuels"
+                                      onClick={async () => {
+                                        try {
+                                          await adminService.deverrouillerPrise(p.id)
+                                          setLockStates(prev => ({ ...prev, [p.id]: false }))
+                                          toast({ title: `🔓 Bouton déverrouillé — "${p.zigbeeName}"` })
+                                        } catch (err: any) {
+                                          toast({ title: err.response?.data?.message ?? "Erreur", variant: "destructive" })
+                                        }
+                                      }}
+                                    >
+                                      <Unlock size={11} /> Déverrouiller bouton
+                                    </Button>
+                                  ) : (
+                                    // État actuel : UNLOCK → bouton pour verrouiller
+                                    <Button
+                                      variant="outline"
+                                      size="sm"
+                                      className="w-full gap-1 text-xs h-7 border-amber-500/30 text-amber-500 hover:bg-amber-500/10"
+                                      title="Verrouille le bouton physique — plus aucun appui manuel possible"
+                                      onClick={async () => {
+                                        try {
+                                          await adminService.verrouillerPrise(p.id)
+                                          setLockStates(prev => ({ ...prev, [p.id]: true }))
+                                          toast({ title: `🔒 Bouton verrouillé — "${p.zigbeeName}"` })
+                                        } catch (err: any) {
+                                          toast({ title: err.response?.data?.message ?? "Erreur", variant: "destructive" })
+                                        }
+                                      }}
+                                    >
+                                      <Lock size={11} /> Verrouiller bouton
+                                    </Button>
+                                  )}
                                 </div>
                               </div>
                             )}

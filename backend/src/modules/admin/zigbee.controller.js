@@ -49,6 +49,13 @@ export const appairerPrise = async (req, res) => {
     return res.status(404).json({ message: 'Poste introuvable' })
   }
 
+  // ── Garde-fou GERANT : ne peut réappairer qu'un poste déjà appairé ───────
+  if (req.user.role === 'GERANT' && !poste.zigbeeName) {
+    return res.status(403).json({
+      message: "Ce poste n'a jamais été appairé. Seul un administrateur peut effectuer le premier appairage."
+    })
+  }
+
   // ── 2. Générer le friendly_name depuis le nom du poste ────────────────────
   const zigbeeName = toFriendlyName(poste.nom)
 
@@ -245,6 +252,35 @@ export const desappairerPrise = async (req, res) => {
   })
 
   return res.json({ success: true, message: `Prise déliée du poste "${poste.nom}"` })
+}
+
+/**
+ * GET /api/admin/zigbee/statut/:posteId
+ * Retourne l'état actuel de la prise (state + child_lock) depuis Z2M.
+ */
+export const statutPrise = async (req, res) => {
+  const posteId = Number(req.params.posteId)
+
+  const poste = await prisma.poste.findFirst({
+    where: { id: posteId },
+    include: { categorie: true }
+  })
+
+  if (!poste || poste.categorie.salleId !== req.user.salle_id) {
+    return res.status(404).json({ message: 'Poste introuvable' })
+  }
+
+  if (!poste.zigbeeName) {
+    return res.status(400).json({ message: 'Ce poste n\'a pas de prise Zigbee associée' })
+  }
+
+  try {
+    const { getStatutComplet } = await import('../../switch/zigbeeSwitch.js')
+    const statut = await getStatutComplet(posteId)
+    return res.json(statut)
+  } catch (err) {
+    return res.status(500).json({ message: err.message })
+  }
 }
 
 /**
