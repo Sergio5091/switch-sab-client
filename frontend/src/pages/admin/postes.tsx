@@ -9,7 +9,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { z } from "zod";
-import { Plus, Pencil, Trash2, Monitor, Tag, Wifi, WifiOff, Loader2, X, MapPin, Lock, Unlock } from "lucide-react";
+import { Plus, Pencil, Trash2, Monitor, Tag, Wifi, WifiOff, Loader2, X, MapPin, Lock, Unlock, Usb, Zap } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
 import { Badge } from "@/components/ui/badge";
 import adminService, { Poste, Categorie } from "@/services/adminService";
@@ -42,6 +42,16 @@ export default function AdminPostes() {
   // Map posteId → état child_lock (null = pas encore chargé, true = LOCK, false = UNLOCK)
   const [lockStates, setLockStates] = useState<Record<number, boolean | null>>({});
 
+  // ── USB ──────────────────────────────────────────────────────────────────
+  // Map posteId → valeur du champ "numéro de relais" en cours d'édition
+  const [usbRelaisEditing, setUsbRelaisEditing] = useState<Record<number, string>>({});
+  // Map posteId → true si sauvegarde en cours
+  const [usbSaving, setUsbSaving] = useState<Record<number, boolean>>({});
+  // Map posteId → true si test en cours
+  const [usbTesting, setUsbTesting] = useState<Record<number, boolean>>({});
+  // Nb de relais du modèle installé (pour validation)
+  const [usbNbRelais, setUsbNbRelais] = useState<number | null>(null);
+
   useEffect(() => {
     adminService.getPostes().then((data) => {
       setPostes(data);
@@ -57,7 +67,10 @@ export default function AdminPostes() {
       toast({ title: "Erreur chargement postes", variant: "destructive" })
     );
     adminService.getCategories().then(setCategories);
-    adminService.getSalle().then(s => setSwitchType(s.switchType)).catch(() => {});
+    adminService.getSalle().then(s => {
+      setSwitchType(s.switchType);
+      setUsbNbRelais(s.usbNbRelais ?? null);
+    }).catch(() => {});
   }, []);  const form = useForm<FormValues>({
     resolver: zodResolver(schema),
     defaultValues: { nom: "", categorieId: "" },
@@ -142,6 +155,58 @@ export default function AdminPostes() {
       toast({ title: `Prise déliée de "${poste.nom}"` });
     } catch (err: any) {
       toast({ title: err.response?.data?.message ?? "Erreur", variant: "destructive" });
+    }
+  }
+
+  // ─── USB : sauvegarder le numéro de relais ──────────────────────────────────
+  async function handleUsbSaveRelais(poste: Poste) {
+    const valStr = usbRelaisEditing[poste.id];
+    const numero = (valStr === '' || valStr === undefined) ? null : Number(valStr);
+
+    if (numero !== null && (isNaN(numero) || numero < 1 || numero > 32)) {
+      toast({ title: "Numéro de relais invalide (1–32)", variant: "destructive" });
+      return;
+    }
+    if (numero !== null && usbNbRelais && numero > usbNbRelais) {
+      toast({ title: `Ce modèle ne possède que ${usbNbRelais} relais`, variant: "destructive" });
+      return;
+    }
+
+    setUsbSaving(prev => ({ ...prev, [poste.id]: true }));
+    try {
+      await adminService.usbAssocierRelais(poste.id, numero);
+      setPostes(prev => prev.map(p =>
+        p.id === poste.id ? { ...p, usbRelaisNumero: numero } : p
+      ));
+      // Nettoyer la valeur d'édition locale
+      setUsbRelaisEditing(prev => {
+        const next = { ...prev };
+        delete next[poste.id];
+        return next;
+      });
+      toast({ title: numero ? `Relais ${numero} associé à "${poste.nom}"` : `Relais dissocié de "${poste.nom}"` });
+    } catch (err: any) {
+      toast({ title: err.response?.data?.message ?? "Erreur", variant: "destructive" });
+    } finally {
+      setUsbSaving(prev => ({ ...prev, [poste.id]: false }));
+    }
+  }
+
+  // ─── USB : tester l'impulsion d'un relais ───────────────────────────────────
+  async function handleUsbTester(poste: Poste) {
+    const relais = poste.usbRelaisNumero;
+    if (!relais) {
+      toast({ title: "Assignez d'abord un numéro de relais", variant: "destructive" });
+      return;
+    }
+    setUsbTesting(prev => ({ ...prev, [poste.id]: true }));
+    try {
+      await adminService.usbTester(relais);
+      toast({ title: `⚡ Relais ${relais} testé — impulsion 2s envoyée` });
+    } catch (err: any) {
+      toast({ title: err.response?.data?.message ?? "Erreur test relais", variant: "destructive" });
+    } finally {
+      setUsbTesting(prev => ({ ...prev, [poste.id]: false }));
     }
   }
 
@@ -352,6 +417,75 @@ export default function AdminPostes() {
                               </div>
                             )}
                           </div>}
+
+                          {/* ── Zone USB ────────────────────────────────── */}
+                          {switchType === 'USB' && (
+                            <div className="border-t border-border pt-3 space-y-2">
+                              <div className="flex items-center gap-1.5 text-xs font-medium text-muted-foreground mb-1">
+                                <Usb size={12} />
+                                <span>Relais USB</span>
+                                {p.usbRelaisNumero && (
+                                  <span className="ml-auto font-mono text-foreground">Port {p.usbRelaisNumero}</span>
+                                )}
+                              </div>
+
+                              {/* Select port + bouton sauvegarder */}
+                              <div className="flex gap-1.5">
+                                <Select
+                                  value={
+                                    usbRelaisEditing[p.id] !== undefined
+                                      ? usbRelaisEditing[p.id]
+                                      : (p.usbRelaisNumero ? String(p.usbRelaisNumero) : '')
+                                  }
+                                  onValueChange={val =>
+                                    setUsbRelaisEditing(prev => ({ ...prev, [p.id]: val }))
+                                  }
+                                >
+                                  <SelectTrigger className="h-7 text-xs flex-1">
+                                    <SelectValue placeholder="Choisir un port…" />
+                                  </SelectTrigger>
+                                  <SelectContent>
+                                    {Array.from(
+                                      { length: usbNbRelais ?? 32 },
+                                      (_, i) => i + 1
+                                    ).map(n => (
+                                      <SelectItem key={n} value={String(n)} className="text-xs font-mono">
+                                        Port {n}
+                                      </SelectItem>
+                                    ))}
+                                  </SelectContent>
+                                </Select>
+                                <Button
+                                  variant="outline"
+                                  size="sm"
+                                  className="h-7 px-2 text-xs"
+                                  disabled={usbSaving[p.id] || usbRelaisEditing[p.id] === undefined}
+                                  onClick={() => handleUsbSaveRelais(p)}
+                                >
+                                  {usbSaving[p.id]
+                                    ? <Loader2 size={11} className="animate-spin" />
+                                    : 'OK'}
+                                </Button>
+                              </div>
+
+                              {/* Bouton tester — seulement si un port est assigné */}
+                              {p.usbRelaisNumero && (
+                                <Button
+                                  variant="outline"
+                                  size="sm"
+                                  className="w-full gap-1.5 text-xs h-7 border-amber-500/30 text-amber-500 hover:bg-amber-500/10"
+                                  disabled={!!usbTesting[p.id]}
+                                  onClick={() => handleUsbTester(p)}
+                                  title="Envoie une impulsion ON/OFF de 2s pour vérifier la correspondance physique"
+                                >
+                                  {usbTesting[p.id]
+                                    ? <><Loader2 size={11} className="animate-spin" /> Test en cours…</>
+                                    : <><Zap size={11} /> Tester port {p.usbRelaisNumero}</>
+                                  }
+                                </Button>
+                              )}
+                            </div>
+                          )}
                         </div>
                       );
                     })}

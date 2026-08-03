@@ -33,9 +33,6 @@ app.use('/wifi-setup', express.static('public/wifi-setup'))
 // Routes réseau : CORS ouvert (pas d'auth, pas de licence, accessible depuis le hotspot)
 app.use('/api/network', cors(), networkRoutes)
 
-// Fichiers statiques — page de configuration WiFi (accessible sans auth ni licence)
-app.use('/wifi-setup', express.static('public/wifi-setup'))
-
 // ─── Nettoyage au démarrage ───────────────────────────────────────────────────
 // Si le serveur redémarre avec des sessions ACTIVE en base, on les marque ARRETEE
 // et on libère les postes correspondants

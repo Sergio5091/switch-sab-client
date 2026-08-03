@@ -20,7 +20,9 @@ export interface Poste {
   image?: string;
   statut: 'LIBRE' | 'OCCUPE';
   categorieId: number;
-  zigbeeName?: string | null; // friendly_name de la prise Zigbee liée (null = pas encore appairée)
+  zigbeeName?: string | null;      // friendly_name de la prise Zigbee liée
+  usbRelaisNumero?: number | null; // numéro de relais USB attribué (1–32)
+  usbDernierEtat?: string | null;  // dernier état connu : "ON" | "OFF"
 }
 
 export interface Gerant {
@@ -92,7 +94,14 @@ const adminService = {
 
   // ─── SALLE ────────────────────────────────────────────────────────────────
 
-  getSalle: async (): Promise<{ id: number; nom: string; switchType: string; switchConfig?: string }> => {
+  getSalle: async (): Promise<{
+    id: number;
+    nom: string;
+    switchType: string;
+    switchConfig?: string;
+    usbPortPath?: string | null;
+    usbNbRelais?: number | null;
+  }> => {
     const res = await api.get('/admin/salle');
     return res.data;
   },
@@ -288,6 +297,49 @@ const adminService = {
    */
   deverrouillerPrise: async (posteId: number): Promise<void> => {
     await api.post(`/admin/zigbee/deverrouiller/${posteId}`);
+  },
+
+  // ─── USB — switch série multi-relais ────────────────────────────────────
+
+  /** Détecte les ports série disponibles (candidats switch USB). */
+  usbDetecter: async (): Promise<{
+    detecte: boolean;
+    port?: string;
+    vendorId?: string;
+    manufacturer?: string | null;
+    candidats: { path: string; vendorId: string; manufacturer: string | null; serialNumber: string | null }[];
+  }> => {
+    const res = await api.get('/admin/usb/detecter');
+    return res.data;
+  },
+
+  /** Enregistre le port choisi et le nb de relais du modèle installé. */
+  usbConfigurer: async (portPath: string, nbRelais: number): Promise<{ success: boolean; portPath: string; nbRelais: number }> => {
+    const res = await api.post('/admin/usb/configurer', { portPath, nbRelais });
+    return res.data;
+  },
+
+  /** Retourne le statut de connexion USB + config actuelle. */
+  usbStatut: async (): Promise<{
+    connecte: boolean;
+    portPath: string | null;
+    nbRelais: number | null;
+    switchType: string;
+  }> => {
+    const res = await api.get('/admin/usb/statut');
+    return res.data;
+  },
+
+  /** Déclenche une impulsion 2s sur un relais (test physique). */
+  usbTester: async (relaisNumero: number): Promise<{ success: boolean }> => {
+    const res = await api.post(`/admin/usb/tester/${relaisNumero}`);
+    return res.data;
+  },
+
+  /** Associe ou dissocie un relais USB à un poste. */
+  usbAssocierRelais: async (posteId: number, usbRelaisNumero: number | null): Promise<{ success: boolean; posteId: number; usbRelaisNumero: number | null }> => {
+    const res = await api.patch(`/admin/usb/poste/${posteId}`, { usbRelaisNumero });
+    return res.data;
   },
 
   getStatutContacts: async (): Promise<{ totalClients: number; nouveauxClients: number; dernierExport: string | null }> => {

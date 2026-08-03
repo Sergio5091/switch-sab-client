@@ -49,10 +49,14 @@ model Salle {
   email        String?                    // Email du propriétaire pour les rapports
   disabled     Boolean  @default(false)
   switchType   String   @default("MOCK") // "MOCK", "ZIGBEE", "USB", "WIFI"
-  switchConfig String?                   // IP ou port COM
+  switchConfig String?                   // IP ou port COM (legacy WIFI)
   indicatifPays String  @default("BJ")   // Code ISO pays pour normalisation tél (ex: BJ, SN, FR, US)
   dernierExportContacts DateTime?        // date du dernier export .vcf pour détection nouveaux clients
   createdAt    DateTime @default(now())
+
+  // ── Switch USB multi-relais ──────────────────────────────────────────────
+  usbPortPath  String?  // chemin détecté ex: "COM3" ou "/dev/ttyUSB0"
+  usbNbRelais  Int?     // nb de relais du modèle installé (4, 6, 16, 32)
 
   users       User[]
   categories  Categorie[]
@@ -110,12 +114,16 @@ model Duree {
 }
 
 model Poste {
-  id          Int         @id @default(autoincrement())
-  nom         String
-  image       String?     // URL image personnalisée
-  statut      StatutPoste @default(LIBRE)
-  categorieId Int
-  zigbeeName  String?     // friendly_name généré automatiquement lors de l'appairage (ex: "ps4_1")
+  id               Int         @id @default(autoincrement())
+  nom              String
+  image            String?     // URL image personnalisée
+  statut           StatutPoste @default(LIBRE)
+  categorieId      Int
+  zigbeeName       String?     // friendly_name généré automatiquement lors de l'appairage (ex: "ps4_1")
+
+  // ── Switch USB multi-relais ──────────────────────────────────────────────
+  usbRelaisNumero  Int?        // numéro de relais attribué à ce poste (1–32)
+  usbDernierEtat   String?     @default("OFF") // dernier état connu : "ON" | "OFF"
 
   categorie Categorie @relation(fields: [categorieId], references: [id])
   sessions  Session[]

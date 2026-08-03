@@ -49,7 +49,8 @@ export const listerPostesGerant = async (req, res) => {
 
     const whereClause = {
       categorie: { salleId: req.user.salle_id },
-      ...(salle?.switchType === 'ZIGBEE' ? { zigbeeName: { not: null } } : {})
+      ...(salle?.switchType === 'ZIGBEE' ? { zigbeeName: { not: null } } : {}),
+      ...(salle?.switchType === 'USB'    ? { usbRelaisNumero: { not: null } } : {})
     }
 
     const postes = await prisma.poste.findMany({

@@ -1,14 +1,14 @@
 import { useState, useEffect, useCallback } from "react";
 import AdminLayout from "@/layouts/AdminLayout";
 import { Button } from "@/components/ui/button";
-import { Monitor, Square, Play, Clock, Wifi, Loader2 } from "lucide-react";
+import { Monitor, Square, Play, Clock, Wifi, Loader2, Usb, AlertTriangle, CheckCircle2 } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
 import { Badge } from "@/components/ui/badge";
 import { cn } from "@/lib/utils";
 import { Link } from "wouter";
 import { io } from "socket.io-client";
 import gerantService, { Session, Poste, Categorie } from "@/services/gerantService";
-import api from "@/services/api";
+import adminService from "@/services/adminService";
 
 function formatTime(secs: number) {
   const m = Math.floor(Math.max(0, secs) / 60);
@@ -26,9 +26,11 @@ export default function GerantDashboard() {
   const [sessions, setSessions] = useState<Session[]>([]);
   const [categories, setCategories] = useState<Categorie[]>([]);
   const [switchType, setSwitchType] = useState<string>('MOCK');
-  const [tick, setTick] = useState(0);
+  const [tick, setTick] = useState(0); // eslint-disable-line @typescript-eslint/no-unused-vars
   // Map posteId → true si réappairage en cours
   const [reappairingIds, setReappairingIds] = useState<Record<number, boolean>>({});
+  // USB : état de connexion du switch
+  const [usbConnecte, setUsbConnecte] = useState<boolean | null>(null);
 
   const load = useCallback(async () => {
     const [p, s, c, salle] = await Promise.all([
@@ -43,10 +45,23 @@ export default function GerantDashboard() {
     setSwitchType(salle.switchType);
   }, []);
 
+  // Charge l'état de connexion USB (seulement si mode USB)
+  const loadUsbStatut = useCallback(async () => {
+    try {
+      const data = await adminService.usbStatut();
+      if (data.switchType === 'USB') {
+        setUsbConnecte(data.connecte);
+      }
+    } catch {
+      // silencieux — non bloquant
+    }
+  }, []);
+
   // Chargement initial au montage
   useEffect(() => {
     load();
-  }, [load]);
+    loadUsbStatut();
+  }, [load, loadUsbStatut]);
 
   // Timer local — force re-render chaque seconde
   useEffect(() => {
@@ -54,7 +69,14 @@ export default function GerantDashboard() {
     return () => clearInterval(interval);
   }, []);
 
-  // Socket — uniquement pour les événements de changement d'état
+  // Polling USB toutes les 30s (seulement si switch USB)
+  useEffect(() => {
+    if (switchType !== 'USB') return;
+    const interval = setInterval(loadUsbStatut, 30_000);
+    return () => clearInterval(interval);
+  }, [switchType, loadUsbStatut]);
+
+  // Socket — événements session + événements USB
   useEffect(() => {
     const socketUrl = new URL(import.meta.env.VITE_API_URL ?? "http://localhost:3000/api").origin;
     const socket = io(socketUrl);
@@ -62,8 +84,27 @@ export default function GerantDashboard() {
     socket.on("session:start", () => { load(); });
     socket.on("session:end", () => { load(); });
     socket.on("session:stop", () => { load(); });
+
+    // ── Événements USB ────────────────────────────────────────────────────
+    socket.on("usb:deconnecte", () => {
+      setUsbConnecte(false);
+      toast({
+        title: "⚠️ Switch USB déconnecté",
+        description: "Vérifiez le câble USB du switch.",
+        variant: "destructive",
+      });
+    });
+
+    socket.on("usb:resynchronisation", () => {
+      setUsbConnecte(true);
+      toast({
+        title: "✅ Switch reconnecté",
+        description: "Les postes ont été resynchronisés automatiquement.",
+      });
+    });
+
     return () => { socket.disconnect(); };
-  }, [load]);
+  }, [load, toast]);
 
   async function handleStop(sessionId: number, posteNom: string) {
     try {
@@ -106,11 +147,32 @@ export default function GerantDashboard() {
             <h1 className="text-xl font-bold text-foreground">Postes en direct</h1>
             <p className="text-sm text-muted-foreground mt-0.5">{activeSessions.length} poste(s) actif(s)</p>
           </div>
-          <Link href="/gerant/session/new">
-            <Button className="gap-1.5" data-testid="button-new-session">
-              <Play size={15} /> Nouvelle session
-            </Button>
-          </Link>
+          <div className="flex items-center gap-2">
+            {/* Badge statut switch USB */}
+            {switchType === 'USB' && usbConnecte !== null && (
+              <div className={cn(
+                "flex items-center gap-1.5 px-2.5 py-1 rounded-full border text-xs font-medium",
+                usbConnecte
+                  ? "bg-green-500/10 border-green-500/20 text-green-500"
+                  : "bg-destructive/10 border-destructive/20 text-destructive"
+              )}>
+                {usbConnecte
+                  ? <><CheckCircle2 size={12} /> Switch connecté</>
+                  : <><AlertTriangle size={12} /> Switch déconnecté</>
+                }
+              </div>
+            )}
+            {switchType === 'USB' && usbConnecte === null && (
+              <div className="flex items-center gap-1.5 px-2.5 py-1 rounded-full border border-border text-xs text-muted-foreground">
+                <Usb size={12} /> USB…
+              </div>
+            )}
+            <Link href="/gerant/session/new">
+              <Button className="gap-1.5" data-testid="button-new-session">
+                <Play size={15} /> Nouvelle session
+              </Button>
+            </Link>
+          </div>
         </div>
 
         {catGroups.map(({ cat, postes: catPostes }) => (

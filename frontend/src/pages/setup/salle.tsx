@@ -10,7 +10,7 @@ import {
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { Building2, MapPin, Phone, Wifi, AlertCircle } from "lucide-react";
+import { Building2, MapPin, Phone, Wifi, AlertCircle, Usb, Search, CheckCircle2, Loader2 } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
 import { axiosInstance } from "@/lib/axios";
 
@@ -174,6 +174,14 @@ export default function SetupSallePage() {
   const [error, setError] = useState("");
   const [loading, setLoading] = useState(false);
 
+  // ── USB : état de la détection ──────────────────────────────────────────────
+  const [usbDetecting, setUsbDetecting] = useState(false);
+  const [usbCandidats, setUsbCandidats] = useState<
+    { path: string; vendorId: string; manufacturer: string | null }[]
+  >([]);
+  const [usbPortChoisi, setUsbPortChoisi] = useState<string>('');
+  const [usbNbRelais, setUsbNbRelais] = useState<string>('');
+
   if (!currentUser || currentUser.role !== "admin") {
     setLocation("/login");
     return null;
@@ -196,6 +204,34 @@ export default function SetupSallePage() {
   const paysCode = form.watch("paysCode");
   const paysSelectionne = PAYS_LISTE.find(p => p.code === paysCode);
 
+  // ── Détection automatique du switch USB ────────────────────────────────────
+  async function handleUsbDetecter() {
+    setUsbDetecting(true);
+    setUsbCandidats([]);
+    setUsbPortChoisi('');
+    try {
+      const res = await axiosInstance.get('/admin/usb/detecter');
+      const data = res.data;
+      if (data.detecte && data.port) {
+        setUsbPortChoisi(data.port);
+        setUsbCandidats(data.candidats ?? [{ path: data.port, vendorId: data.vendorId, manufacturer: data.manufacturer }]);
+        toast({ title: `Switch détecté : ${data.port}` });
+      } else {
+        setUsbCandidats(data.candidats ?? []);
+        if ((data.candidats ?? []).length > 1) {
+          toast({ title: `${data.candidats.length} périphériques trouvés — choisissez le bon` });
+        }
+      }
+    } catch (err: any) {
+      toast({
+        title: err.response?.data?.message ?? "Erreur de détection",
+        variant: "destructive"
+      });
+    } finally {
+      setUsbDetecting(false);
+    }
+  }
+
   async function onSubmit(values: FormValues) {
     setError("");
     setLoading(true);
@@ -211,6 +247,18 @@ export default function SetupSallePage() {
         switchType:    values.switchType,
         switchConfig:  values.switchConfig || undefined,
       });
+
+      // Si mode USB et port+nbRelais renseignés, configurer immédiatement
+      if (values.switchType === 'USB' && usbPortChoisi && usbNbRelais) {
+        try {
+          await axiosInstance.post('/admin/usb/configurer', {
+            portPath: usbPortChoisi,
+            nbRelais: Number(usbNbRelais),
+          });
+        } catch (_) {
+          // Non bloquant — peut être reconfigurée depuis Admin → Paramètres
+        }
+      }
 
       await checkSetupStatut();
 
@@ -374,29 +422,135 @@ export default function SetupSallePage() {
                 </FormItem>
               )} />
 
-              {switchType !== "ZIGBEE" && (
-              <FormField control={form.control} name="switchConfig" render={({ field }) => (
-                <FormItem>
-                  <FormLabel>
-                    {switchType === "WIFI" ? "Adresse IP du switch" : "Port COM (USB)"}
-                    {switchType === "USB" && <span className="text-muted-foreground ml-1 font-normal">(optionnel)</span>}
-                    {switchType === "WIFI" && <span className="text-destructive ml-1 text-xs">*</span>}
-                  </FormLabel>
-                  <FormControl>
-                    <Input
-                      {...field}
-                      placeholder={switchType === "WIFI" ? "192.168.1.100" : "COM3"}
-                      className="h-11"
-                    />
-                  </FormControl>
-                  {switchType === "WIFI" && (
+              {/* ── Zone WIFI : champ IP ── */}
+              {switchType === "WIFI" && (
+                <FormField control={form.control} name="switchConfig" render={({ field }) => (
+                  <FormItem>
+                    <FormLabel>
+                      Adresse IP du switch
+                      <span className="text-destructive ml-1 text-xs">*</span>
+                    </FormLabel>
+                    <FormControl>
+                      <Input {...field} placeholder="192.168.1.100" className="h-11" />
+                    </FormControl>
                     <p className="text-xs text-muted-foreground">
                       Adresse IP locale du switch sur le réseau de la salle
                     </p>
-                  )}
-                  <FormMessage />
-                </FormItem>
-              )} />
+                    <FormMessage />
+                  </FormItem>
+                )} />
+              )}
+
+              {/* ── Zone USB : modèle + détection ── */}
+              {switchType === "USB" && (
+                <div className="space-y-3 border border-border rounded-xl p-4">
+                  <div className="flex items-center gap-2 text-sm font-medium text-foreground">
+                    <Usb size={15} className="text-primary" />
+                    Configuration du switch USB
+                  </div>
+
+                  {/* Nombre de relais du modèle */}
+                  <div className="space-y-1.5">
+                    <label className="text-sm font-medium text-foreground">
+                      Modèle de switch (nombre de relais)
+                    </label>
+                    <div className="grid grid-cols-5 gap-2">
+                      {([2, 4, 8, 16, 32] as const).map(n => (
+                        <button
+                          key={n}
+                          type="button"
+                          onClick={() => setUsbNbRelais(String(n))}
+                          className={`p-2.5 rounded-lg border text-sm font-mono font-semibold transition-all ${
+                            usbNbRelais === String(n)
+                              ? "border-primary bg-primary/10 text-primary"
+                              : "border-border bg-card text-muted-foreground hover:border-primary/30"
+                          }`}
+                        >
+                          {n}
+                        </button>
+                      ))}
+                    </div>
+                    <p className="text-xs text-muted-foreground">
+                      Sélectionnez le nombre de relais de votre modèle Arduino
+                    </p>
+                  </div>
+
+                  {/* Détection du port */}
+                  <div className="space-y-2">
+                    <label className="text-sm font-medium text-foreground">
+                      Port série
+                      <span className="text-muted-foreground ml-1 font-normal text-xs">(détection automatique recommandée)</span>
+                    </label>
+
+                    <Button
+                      type="button"
+                      variant="outline"
+                      className="gap-1.5 text-sm h-10 w-full"
+                      disabled={usbDetecting}
+                      onClick={handleUsbDetecter}
+                    >
+                      {usbDetecting
+                        ? <><Loader2 size={14} className="animate-spin" /> Détection en cours…</>
+                        : <><Search size={14} /> Détecter le switch USB</>
+                      }
+                    </Button>
+
+                    {/* Un seul candidat — confirmation automatique */}
+                    {usbCandidats.length === 1 && usbPortChoisi && (
+                      <div className="flex items-center gap-2 bg-green-500/10 border border-green-500/20 rounded-lg px-3 py-2">
+                        <CheckCircle2 size={14} className="text-green-500 flex-shrink-0" />
+                        <span className="text-xs text-green-500 font-mono font-semibold">{usbPortChoisi}</span>
+                        {usbCandidats[0].manufacturer && (
+                          <span className="text-xs text-muted-foreground ml-1">({usbCandidats[0].manufacturer})</span>
+                        )}
+                      </div>
+                    )}
+
+                    {/* Plusieurs candidats — liste de sélection */}
+                    {usbCandidats.length > 1 && (
+                      <div className="space-y-1.5">
+                        <p className="text-xs text-amber-500">
+                          Plusieurs périphériques détectés — choisissez le switch :
+                        </p>
+                        {usbCandidats.map(c => (
+                          <button
+                            key={c.path}
+                            type="button"
+                            onClick={() => setUsbPortChoisi(c.path)}
+                            className={`w-full flex items-center gap-2 px-3 py-2 rounded-lg border text-xs transition-all ${
+                              usbPortChoisi === c.path
+                                ? "border-primary bg-primary/10 text-primary"
+                                : "border-border bg-card text-muted-foreground hover:border-primary/30"
+                            }`}
+                          >
+                            <span className="font-mono font-semibold">{c.path}</span>
+                            {c.manufacturer && <span className="text-muted-foreground">— {c.manufacturer}</span>}
+                            <span className="ml-auto text-[10px] font-mono text-muted-foreground">VID:{c.vendorId}</span>
+                          </button>
+                        ))}
+                      </div>
+                    )}
+
+                    {/* Saisie manuelle si la détection ne trouve rien */}
+                    {usbCandidats.length === 0 && (
+                      <div className="space-y-1">
+                        <p className="text-xs text-muted-foreground">
+                          Ou saisissez manuellement le port (ex: COM3, /dev/ttyUSB0)
+                        </p>
+                        <Input
+                          value={usbPortChoisi}
+                          onChange={e => setUsbPortChoisi(e.target.value)}
+                          placeholder="COM3"
+                          className="h-9 text-sm font-mono"
+                        />
+                      </div>
+                    )}
+                  </div>
+
+                  <p className="text-xs text-muted-foreground border-t border-border pt-2">
+                    Le port et le modèle peuvent être modifiés depuis Admin → Paramètres → Switch après l'installation.
+                  </p>
+                </div>
               )}
 
               {error && (

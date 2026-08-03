@@ -12,6 +12,7 @@ import { getPromoConfig, modifierPromoConfig } from './promoConfig.controller.js
 import { genererCoupons, listerCoupons, exportCouponsPdf } from './coupons.controller.js'
 import { creerPromotion, listerPromotions, envoyerPromotion, exportContacts, exportNouveauxContacts, statutContacts } from './promotions.controller.js'
 import { appairerPrise, desappairerPrise, identifierPrise, verrouillerPrise, deverrouillerPrise, statutPrise } from './zigbee.controller.js'
+import { detecter, configurer, statut as statutUsb, tester, associerRelais } from './usb.controller.js'
 
 const router = Router()
 
@@ -79,5 +80,12 @@ router.delete('/zigbee/desappairer/:posteId',   desappairerPrise)
 router.post  ('/zigbee/identifier/:posteId',    identifierPrise)
 router.post  ('/zigbee/verrouiller/:posteId',   verrouillerPrise)
 router.post  ('/zigbee/deverrouiller/:posteId', deverrouillerPrise)
+
+// ─── USB — switch série multi-relais ─────────────────────────────────────────
+router.get   ('/usb/detecter',              detecter)
+router.post  ('/usb/configurer',            configurer)
+router.get   ('/usb/statut',                statutUsb)
+router.post  ('/usb/tester/:relais',        tester)
+router.patch ('/usb/poste/:posteId',        associerRelais)
 
 export default router

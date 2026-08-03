@@ -17,6 +17,8 @@ export const getSalle = async (req, res) => {
         telephone: true,
         switchType: true,
         switchConfig: true,
+        usbPortPath: true,
+        usbNbRelais: true,
       }
     })
     if (!salle) return res.status(404).json({ message: 'Salle introuvable' })
@@ -61,6 +63,8 @@ export const modifierSalle = async (req, res) => {
         telephone: true,
         switchType: true,
         switchConfig: true,
+        usbPortPath: true,
+        usbNbRelais: true,
       }
     })
 
