@@ -18,11 +18,7 @@ const schema = z.object({
 });
 type FormValues = z.infer<typeof schema>;
 
-const DEMO_ACCOUNTS = [
-  { label: "Admin", identifiant: "admin@switchsab.local", color: "text-blue-500 dark:text-blue-400" },
-  { label: "Gérant", identifiant: "gerant1", color: "text-green-500 dark:text-green-400" },
-  { label: "Client", identifiant: "kofi", color: "text-purple-500 dark:text-purple-400" },
-];
+const DEMO_ACCOUNTS: never[] = [];
 
 function Particle({ style, delay }: { style: React.CSSProperties; delay: number }) {
   return (
@@ -114,18 +110,6 @@ function HeroPanel() {
             <span className="text-xs text-green-400 font-medium">Système actif</span>
           </div>
         </div>
-        <div className="flex items-center gap-6 mt-2">
-          {[
-            { label: "Salles", value: "3" },
-            { label: "Postes", value: "12" },
-            { label: "Clients", value: "250+" },
-          ].map(s => (
-            <div key={s.label} className="text-center">
-              <div className="text-lg font-bold text-primary">{s.value}</div>
-              <div className="text-[10px] text-slate-500 uppercase tracking-wider">{s.label}</div>
-            </div>
-          ))}
-        </div>
       </div>
       <div className="absolute top-6 left-6 w-12 h-12 border-t-2 border-l-2 border-primary/30 rounded-tl-lg" />
       <div className="absolute top-6 right-6 w-12 h-12 border-t-2 border-r-2 border-primary/30 rounded-tr-lg" />
@@ -145,7 +129,7 @@ export default function LoginPage() {
 
   const form = useForm<FormValues>({
     resolver: zodResolver(schema),
-    defaultValues: { identifiant: "", password: "admin123" },
+    defaultValues: { identifiant: "", password: "" },
   });
 
   async function onSubmit(values: FormValues) {
@@ -276,29 +260,6 @@ export default function LoginPage() {
                 </Button>
               </form>
             </Form>
-            <div className="flex items-center gap-3">
-              <div className="flex-1 h-px bg-border" />
-              <span className="text-xs text-muted-foreground">Comptes de démonstration</span>
-              <div className="flex-1 h-px bg-border" />
-            </div>
-            <div className="grid grid-cols-2 gap-2">
-              {DEMO_ACCOUNTS.map(a => (
-                <button
-                  key={a.identifiant}
-                  onClick={() => fillDemo(a.identifiant)}
-                  className="flex flex-col items-start gap-0.5 p-3 rounded-xl border border-border bg-card hover:bg-muted hover:border-primary/30 transition-all text-left group"
-                  data-testid={`button-demo-${a.label.toLowerCase().replace(" ", "-")}`}
-                >
-                  <span className={cn("text-xs font-semibold", a.color)}>{a.label}</span>
-                  <span className="text-[10px] text-muted-foreground truncate w-full group-hover:text-foreground transition-colors">
-                    {a.identifiant}
-                  </span>
-                </button>
-              ))}
-            </div>
-            <p className="text-center text-xs text-muted-foreground">
-              Mot de passe universel : <span className="font-mono font-semibold text-foreground">admin123</span>
-            </p>
           </div>
         </div>
         <div className="text-center px-6 py-4 text-xs text-muted-foreground">

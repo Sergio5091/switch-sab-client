@@ -120,10 +120,25 @@ function ProtectedRoute({
   if (isLoading) return null;
   if (!currentUser) return <Redirect to="/login" />;
   if (!roles.includes(currentUser.role)) return <RoleRedirect />;
-  
-  // Pour les routes admin, vérifier la licence
-  if (roles.includes("admin") && licenceStatut?.statut !== "ACTIVE") {
-    return <Redirect to="/admin/licence" />;
+
+  // §37 — Vérifier la licence pour tous les rôles (pas uniquement admin)
+  if (licenceStatut !== null && licenceStatut.statut !== "ACTIVE") {
+    // Les gérants et clients voient un message dédié plutôt que la page licence admin
+    if (currentUser.role === "admin") {
+      return <Redirect to="/admin/licence" />;
+    }
+    // Gérant / client : bloquer l'accès avec un écran simple
+    return (
+      <div className="min-h-screen flex items-center justify-center bg-background p-6">
+        <div className="bg-card border border-destructive/30 rounded-2xl p-8 max-w-sm w-full text-center space-y-4">
+          <ShieldAlert size={40} className="text-destructive mx-auto" />
+          <h2 className="text-lg font-bold text-foreground">Accès suspendu</h2>
+          <p className="text-sm text-muted-foreground">
+            La licence de cette salle a expiré ou est invalide. Contactez l'administrateur.
+          </p>
+        </div>
+      </div>
+    );
   }
 
   if (licenceStatut === null) return null;

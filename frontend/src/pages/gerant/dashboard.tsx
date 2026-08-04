@@ -9,6 +9,7 @@ import { Link } from "wouter";
 import { io } from "socket.io-client";
 import gerantService, { Session, Poste, Categorie } from "@/services/gerantService";
 import adminService from "@/services/adminService";
+import UsbPortModal from "@/components/UsbPortModal";
 
 function formatTime(secs: number) {
   const m = Math.floor(Math.max(0, secs) / 60);
@@ -27,10 +28,15 @@ export default function GerantDashboard() {
   const [categories, setCategories] = useState<Categorie[]>([]);
   const [switchType, setSwitchType] = useState<string>('MOCK');
   const [tick, setTick] = useState(0); // eslint-disable-line @typescript-eslint/no-unused-vars
+  const [isLoading, setIsLoading] = useState(true);
   // Map posteId → true si réappairage en cours
   const [reappairingIds, setReappairingIds] = useState<Record<number, boolean>>({});
   // USB : état de connexion du switch
   const [usbConnecte, setUsbConnecte] = useState<boolean | null>(null);
+  // USB : modal de reconfiguration du port
+  const [usbModalOpen, setUsbModalOpen] = useState(false);
+  const [usbNbRelais, setUsbNbRelais] = useState<number | null>(null);
+  const [usbPortActuel, setUsbPortActuel] = useState<string | null>(null);
 
   const load = useCallback(async () => {
     const [p, s, c, salle] = await Promise.all([
@@ -43,6 +49,7 @@ export default function GerantDashboard() {
     setSessions(s);
     setCategories(c);
     setSwitchType(salle.switchType);
+    setIsLoading(false);
   }, []);
 
   // Charge l'état de connexion USB (seulement si mode USB)
@@ -51,6 +58,8 @@ export default function GerantDashboard() {
       const data = await adminService.usbStatut();
       if (data.switchType === 'USB') {
         setUsbConnecte(data.connecte);
+        setUsbPortActuel(data.portPath);
+        setUsbNbRelais(data.nbRelais);
       }
     } catch {
       // silencieux — non bloquant
@@ -103,6 +112,12 @@ export default function GerantDashboard() {
       });
     });
 
+    // Port introuvable = le switch a été rebranché sur un autre port USB
+    socket.on("usb:port_introuvable", () => {
+      setUsbConnecte(false);
+      setUsbModalOpen(true);
+    });
+
     return () => { socket.disconnect(); };
   }, [load, toast]);
 
@@ -150,17 +165,19 @@ export default function GerantDashboard() {
           <div className="flex items-center gap-2">
             {/* Badge statut switch USB */}
             {switchType === 'USB' && usbConnecte !== null && (
-              <div className={cn(
-                "flex items-center gap-1.5 px-2.5 py-1 rounded-full border text-xs font-medium",
-                usbConnecte
-                  ? "bg-green-500/10 border-green-500/20 text-green-500"
-                  : "bg-destructive/10 border-destructive/20 text-destructive"
-              )}>
-                {usbConnecte
-                  ? <><CheckCircle2 size={12} /> Switch connecté</>
-                  : <><AlertTriangle size={12} /> Switch déconnecté</>
-                }
-              </div>
+              usbConnecte ? (
+                <div className="flex items-center gap-1.5 px-2.5 py-1 rounded-full border bg-green-500/10 border-green-500/20 text-green-500 text-xs font-medium">
+                  <CheckCircle2 size={12} /> Switch connecté
+                </div>
+              ) : (
+                <button
+                  onClick={() => setUsbModalOpen(true)}
+                  className="flex items-center gap-1.5 px-2.5 py-1 rounded-full border bg-destructive/10 border-destructive/20 text-destructive text-xs font-medium hover:bg-destructive/20 transition-colors"
+                  title="Cliquez pour reconfigurer le port du switch"
+                >
+                  <AlertTriangle size={12} /> Switch déconnecté — Reconfigurer
+                </button>
+              )
             )}
             {switchType === 'USB' && usbConnecte === null && (
               <div className="flex items-center gap-1.5 px-2.5 py-1 rounded-full border border-border text-xs text-muted-foreground">
@@ -247,7 +264,7 @@ export default function GerantDashboard() {
                       </>
                     ) : (
                       <div className="space-y-2">
-                        <Link href="/gerant/session/new">
+                        <Link href={`/gerant/session/new?posteId=${poste.id}`}>
                           <Button size="sm" variant="outline" className="w-full gap-1.5 text-xs border-primary/30 text-primary hover:bg-primary/10" data-testid={`button-start-poste-${poste.id}`}>
                             <Play size={11} /> Démarrer
                           </Button>
@@ -278,10 +295,29 @@ export default function GerantDashboard() {
 
         {catGroups.length === 0 && (
           <div className="bg-card border border-border rounded-xl px-5 py-12 text-center text-muted-foreground text-sm">
-            Aucun poste configuré
+            {isLoading ? (
+              <div className="space-y-3">
+                {[1, 2, 3].map(i => (
+                  <div key={i} className="h-20 bg-muted/50 rounded-xl animate-pulse" />
+                ))}
+              </div>
+            ) : "Aucun poste configuré"}
           </div>
         )}
       </div>
+
+      {/* ── Modal reconfiguration port USB (déclenché par usb:port_introuvable) ── */}
+      <UsbPortModal
+        open={usbModalOpen}
+        onClose={() => setUsbModalOpen(false)}
+        onSuccess={(port) => {
+          setUsbPortActuel(port);
+          setUsbConnecte(true);
+        }}
+        nbRelais={usbNbRelais}
+        portActuel={usbPortActuel}
+        routePrefix="/gerant"
+      />
     </AdminLayout>
   );
 }

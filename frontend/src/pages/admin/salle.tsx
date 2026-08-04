@@ -1,4 +1,4 @@
-import { useState, useEffect } from "react";
+import { useState, useEffect, useRef } from "react";
 import AdminLayout from "@/layouts/AdminLayout";
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
@@ -9,9 +9,11 @@ import {
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { Building2, MapPin, Phone, Wifi, Usb, Save, AlertCircle, Radio } from "lucide-react";
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "@/components/ui/dialog";
+import { Building2, MapPin, Phone, Usb, Save, Radio, AlertTriangle, Search } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
 import api from "@/services/api";
+import UsbPortModal from "@/components/UsbPortModal";
 
 // Même liste que setup/salle.tsx
 const PAYS_LISTE = [
@@ -72,11 +74,11 @@ const schema = z.object({
   ville:        z.string().min(2, "Ville requise"),
   quartier:     z.string().min(2, "Quartier requis"),
   telephone:    z.string().min(6, "Téléphone requis"),
-  switchType:   z.enum(["WIFI", "USB", "ZIGBEE", "MOCK"]),
+  switchType:   z.enum(["USB", "ZIGBEE", "MOCK"]),
   switchConfig: z.string().optional(),
 }).refine(
-  (data) => data.switchType !== "WIFI" || (!!data.switchConfig && data.switchConfig.trim().length > 0),
-  { message: "L'adresse IP est requise pour le mode WIFI", path: ["switchConfig"] }
+  () => true, // plus de validation WIFI
+  { message: "", path: ["switchConfig"] }
 );
 
 type FormValues = z.infer<typeof schema>;
@@ -86,11 +88,22 @@ export default function AdminSalle() {
   const [loading, setLoading] = useState(false);
   const [fetching, setFetching] = useState(true);
 
+  // ── Confirmation changement de switch ──────────────────────────────────────
+  // switchType actuellement en base (référence stable)
+  const switchTypeEnBase = useRef<string>("USB");
+  // dialog : null = fermé, sinon le type vers lequel on veut basculer
+  const [confirmVers, setConfirmVers] = useState<string | null>(null);
+
+  // ── Détection port USB — via modal ─────────────────────────────────────────
+  const [usbModalOpen, setUsbModalOpen] = useState(false);
+  const [usbPortActuel, setUsbPortActuel] = useState<string>('');
+  const [usbNbRelais, setUsbNbRelais] = useState<number | null>(null);
+
   const form = useForm<FormValues>({
     resolver: zodResolver(schema),
     defaultValues: {
       nom: "", indicatifPays: "", ville: "", quartier: "",
-      telephone: "", switchType: "WIFI", switchConfig: "",
+      telephone: "", switchType: "USB", switchConfig: "",
     },
   });
 
@@ -99,18 +112,57 @@ export default function AdminSalle() {
   useEffect(() => {
     api.get('/admin/salle').then(r => {
       const s = r.data;
+      const type = s.switchType ?? "USB";
+      switchTypeEnBase.current = type;
+      setUsbPortActuel(s.usbPortPath ?? '');
+      setUsbNbRelais(s.usbNbRelais ?? null);
       form.reset({
-        nom:          s.nom          ?? "",
+        nom:          s.nom           ?? "",
         indicatifPays: s.indicatifPays ?? "",
-        ville:        s.ville         ?? "",
-        quartier:     s.quartier      ?? "",
-        telephone:    s.telephone     ?? "",
-        switchType:   s.switchType    ?? "WIFI",
-        switchConfig: s.switchConfig  ?? "",
+        ville:        s.ville          ?? "",
+        quartier:     s.quartier       ?? "",
+        telephone:    s.telephone      ?? "",
+        switchType:   type,
+        switchConfig: s.switchConfig   ?? "",
       });
     }).catch(() => toast({ title: "Erreur chargement config salle", variant: "destructive" }))
       .finally(() => setFetching(false));
   }, []);
+
+  // Appelé au clic sur un bouton USB / Zigbee
+  function handleClickSwitch(type: string) {
+    const actuel = form.getValues("switchType");
+    // Même valeur → rien du tout
+    if (type === actuel) return;
+    // Vrai changement → ouvrir le dialog avec la valeur actuelle comme "de"
+    setConfirmVers(type);
+  }
+
+  // L'admin confirme → on applique le changement dans le formulaire
+  function handleConfirmer() {
+    if (confirmVers) {
+      form.setValue("switchType", confirmVers as FormValues["switchType"]);
+    }
+    setConfirmVers(null);
+  }
+
+  // L'admin annule → on ne touche à rien
+  function handleAnnuler() {
+    setConfirmVers(null);
+  }
+
+  // Message d'impact selon la transition
+  function getMessageChangement(de: string, vers: string): string {
+    if (de === "USB" && vers === "ZIGBEE") {
+      return "Les postes associés à des relais USB ne seront plus visibles pour le gérant. " +
+        "Il faudra appairer des prises Zigbee sur chaque poste depuis Admin → Postes avant de pouvoir démarrer des sessions."
+    }
+    if (de === "ZIGBEE" && vers === "USB") {
+      return "Les postes Zigbee appairés ne seront plus visibles pour le gérant. " +
+        "Il faudra associer un port relais USB à chaque poste depuis Admin → Postes avant de pouvoir démarrer des sessions."
+    }
+    return "Les postes ne seront plus pilotés par le switch actuel. Assurez-vous que le nouveau switch est correctement configuré."
+  }
 
   async function onSubmit(values: FormValues) {
     setLoading(true);
@@ -120,6 +172,7 @@ export default function AdminSalle() {
         pays: PAYS_LISTE.find(p => p.code === values.indicatifPays)?.nom ?? values.indicatifPays,
         switchConfig: values.switchType === "USB" ? (values.switchConfig || null) : values.switchConfig,
       });
+      switchTypeEnBase.current = values.switchType;
       toast({ title: "Configuration mise à jour ✅" });
     } catch (err: any) {
       toast({ title: err.response?.data?.message ?? "Erreur", variant: "destructive" });
@@ -227,13 +280,12 @@ export default function AdminSalle() {
               <FormField control={form.control} name="switchType" render={({ field }) => (
                 <FormItem>
                   <FormControl>
-                    <div className="grid grid-cols-3 gap-2">
+                    <div className="grid grid-cols-2 gap-2">
                       {([
-                        { type: "WIFI",   label: "WIFI",   icon: <Wifi size={15} /> },
                         { type: "USB",    label: "USB",    icon: <Usb size={15} /> },
                         { type: "ZIGBEE", label: "Zigbee", icon: <Radio size={15} /> },
                       ] as const).map(({ type, label, icon }) => (
-                        <button key={type} type="button" onClick={() => field.onChange(type)}
+                        <button key={type} type="button" onClick={() => handleClickSwitch(type)}
                           className={`flex items-center gap-2 p-3 rounded-xl border text-sm font-medium transition-all ${
                             field.value === type
                               ? "border-primary bg-primary/10 text-primary"
@@ -249,31 +301,30 @@ export default function AdminSalle() {
                 </FormItem>
               )} />
 
-              {/* switchConfig — masqué pour Zigbee (pas besoin d'IP, tout passe par MQTT) */}
-              {switchType !== "ZIGBEE" && (
-                <FormField control={form.control} name="switchConfig" render={({ field }) => (
-                  <FormItem>
-                    <FormLabel className="flex items-center gap-1">
-                      {switchType === "WIFI" ? "Adresse IP du switch" : "Port COM (USB)"}
-                      {switchType === "WIFI" && <span className="text-destructive text-xs">*</span>}
-                      {switchType === "USB"  && <span className="text-muted-foreground text-xs font-normal">(optionnel)</span>}
-                    </FormLabel>
-                    <FormControl>
-                      <Input
-                        {...field}
-                        placeholder={switchType === "WIFI" ? "192.168.1.100" : "COM3"}
-                        className="h-11"
-                      />
-                    </FormControl>
-                    {switchType === "WIFI" && (
-                      <p className="text-xs text-muted-foreground flex items-center gap-1">
-                        <AlertCircle size={11} />
-                        Adresse IP locale du switch sur le réseau de la salle
-                      </p>
-                    )}
-                    <FormMessage />
-                  </FormItem>
-                )} />
+              {/* Zone USB : port actuel + bouton pour ouvrir le modal de détection */}
+              {switchType === "USB" && (
+                <div className="space-y-2 border border-border rounded-xl p-3">
+                  {usbPortActuel ? (
+                    <div className="flex items-center gap-2 text-xs text-muted-foreground">
+                      <Usb size={12} className="text-primary" />
+                      <span>Port actuel :</span>
+                      <span className="font-mono font-semibold text-foreground">{usbPortActuel}</span>
+                      {usbNbRelais && <span className="ml-auto">{usbNbRelais} relais</span>}
+                    </div>
+                  ) : (
+                    <p className="text-xs text-amber-500">Aucun port configuré.</p>
+                  )}
+                  <Button
+                    type="button"
+                    variant="outline"
+                    size="sm"
+                    className="w-full gap-1.5 text-xs"
+                    onClick={() => setUsbModalOpen(true)}
+                  >
+                    <Search size={13} />
+                    {usbPortActuel ? "Changer le port USB" : "Configurer le port USB"}
+                  </Button>
+                </div>
               )}
 
               {/* Info Zigbee */}
@@ -283,7 +334,7 @@ export default function AdminSalle() {
                   <p className="text-xs text-muted-foreground">
                     Mode Zigbee — les prises sont pilotées via{" "}
                     <span className="font-medium text-foreground">Zigbee2MQTT + MQTT</span>.
-                    Aucune adresse IP requise. Appairez les prises depuis{" "}
+                    Appairez les prises depuis{" "}
                     <span className="font-medium text-foreground">Admin → Postes</span>.
                   </p>
                 </div>
@@ -297,6 +348,62 @@ export default function AdminSalle() {
           </form>
         </Form>
       </div>
+
+      {/* ── Modal détection port USB ── */}
+      <UsbPortModal
+        open={usbModalOpen}
+        onClose={() => setUsbModalOpen(false)}
+        onSuccess={(port) => setUsbPortActuel(port)}
+        nbRelais={usbNbRelais}
+        portActuel={usbPortActuel}
+        routePrefix="/admin"
+      />
+
+      {/* ── Dialog confirmation changement de switch ── */}
+      <Dialog open={!!confirmVers} onOpenChange={(open) => { if (!open) handleAnnuler(); }}>
+        <DialogContent className="sm:max-w-md">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2">
+              <AlertTriangle size={18} className="text-amber-500" />
+              Changer le type de switch ?
+            </DialogTitle>
+          </DialogHeader>
+
+          <div className="space-y-3 py-1">
+            {/* Résumé visuel de la transition */}
+            <div className="flex items-center gap-3 text-sm">
+              <span className="px-2.5 py-1 rounded-lg bg-muted font-mono font-semibold text-foreground">
+                {switchType}
+              </span>
+              <span className="text-muted-foreground">→</span>
+              <span className="px-2.5 py-1 rounded-lg bg-primary/10 border border-primary/20 font-mono font-semibold text-primary">
+                {confirmVers}
+              </span>
+            </div>
+
+            {/* Message d'impact */}
+            <div className="bg-amber-500/10 border border-amber-500/20 rounded-xl px-3 py-2.5">
+              <p className="text-sm text-amber-600 dark:text-amber-400 leading-relaxed">
+                {getMessageChangement(switchType, confirmVers ?? "")}
+              </p>
+            </div>
+
+            <p className="text-xs text-muted-foreground">
+              Ce changement ne sera effectif qu'après avoir cliqué sur "Enregistrer les modifications".
+            </p>
+          </div>
+
+          <DialogFooter className="gap-2">
+            <Button variant="ghost" onClick={handleAnnuler}>
+              Annuler
+            </Button>
+            <Button onClick={handleConfirmer}>
+              Oui, changer
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
     </AdminLayout>
   );
 }

@@ -144,6 +144,10 @@ async function getPort() {
   const ports = await SerialPort.list()
   const portExiste = ports.find(p => p.path === salle.usbPortPath)
   if (!portExiste) {
+    // Émettre l'événement pour déclencher le modal côté frontend
+    try {
+      getIO().emit('usb:port_introuvable', { portPath: salle.usbPortPath })
+    } catch (_) {}
     throw new Error(
       `Switch USB introuvable sur ${salle.usbPortPath}. ` +
       `Si le switch a été changé ou débranché, relancez la détection ` +

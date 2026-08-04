@@ -40,6 +40,29 @@ export const modifierSalle = async (req, res) => {
   }
 
   try {
+    // ── Garde : blocage si changement de switchType avec sessions actives ────
+    if (switchType !== undefined) {
+      const salleActuelle = await prisma.salle.findUnique({
+        where: { id: req.user.salle_id },
+        select: { switchType: true }
+      })
+
+      if (salleActuelle && salleActuelle.switchType !== switchType) {
+        const sessionActive = await prisma.session.findFirst({
+          where: {
+            statut: 'ACTIVE',
+            poste: { categorie: { salleId: req.user.salle_id } }
+          }
+        })
+
+        if (sessionActive) {
+          return res.status(409).json({
+            message: `Impossible de changer le type de switch : ${sessionActive.id ? 'une' : 'des'} session(s) sont actives en ce moment. Attendez la fin de toutes les sessions avant de modifier cette configuration.`
+          })
+        }
+      }
+    }
+    // ────────────────────────────────────────────────────────────────────────
     const salle = await prisma.salle.update({
       where: { id: req.user.salle_id },
       data: {

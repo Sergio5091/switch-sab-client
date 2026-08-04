@@ -32,6 +32,16 @@ export const demarrerSession = async (req, res) => {
       })
     }
 
+    // §34 — Vérifier que le client n'a pas déjà une session active
+    const sessionExistante = await prisma.session.findFirst({
+      where: { clientId: Number(clientId), statut: 'ACTIVE' }
+    })
+    if (sessionExistante) {
+      return res.status(409).json({
+        message: 'Ce client a déjà une session active en cours'
+      })
+    }
+
     // 2. Vérifier catégorie existe et appartient à la salle
     const categorie = await prisma.categorie.findFirst({
       where: {
@@ -516,17 +526,28 @@ export const prolongerSession = async (req, res) => {
     })
     if (!session) return res.status(404).json({ message: 'Session active introuvable' })
 
+    // §35 — vérifier que la durée appartient bien à la catégorie du poste
     const dureeSupp = await prisma.duree.findFirst({
       where: { id: Number(dureeId), categorieId: session.poste.categorieId }
     })
-    if (!dureeSupp) return res.status(404).json({ message: 'Durée introuvable' })
+    if (!dureeSupp) return res.status(404).json({ message: 'Durée introuvable pour cette catégorie' })
 
-    // Vérifier que le client a le crédit suffisant
-    const credit = await prisma.credit.findFirst({
-      where: { clientId: session.clientId, categorieId: session.poste.categorieId }
-    })
-    if (!credit || credit.solde < dureeSupp.secondes) {
-      return res.status(400).json({ message: 'Crédit insuffisant pour prolonger' })
+    // Vérifier le crédit (bonus ou crédit catégorie selon le type de session)
+    let creditSource
+    if (session.estBonus) {
+      const bonus = await prisma.bonus.findUnique({ where: { clientId: session.clientId } })
+      if (!bonus || bonus.solde < dureeSupp.secondes) {
+        return res.status(400).json({ message: 'Bonus insuffisant pour prolonger' })
+      }
+      creditSource = { type: 'bonus', data: bonus }
+    } else {
+      const credit = await prisma.credit.findFirst({
+        where: { clientId: session.clientId, categorieId: session.poste.categorieId }
+      })
+      if (!credit || credit.solde < dureeSupp.secondes) {
+        return res.status(400).json({ message: 'Crédit insuffisant pour prolonger' })
+      }
+      creditSource = { type: 'credit', data: credit }
     }
 
     // Calculer la nouvelle fin
@@ -534,11 +555,18 @@ export const prolongerSession = async (req, res) => {
     const nouvelleFin = new Date(Date.now() + (tempsRestantActuel + dureeSupp.secondes) * 1000)
 
     await prisma.$transaction(async (tx) => {
-      // Débiter le crédit
-      await tx.credit.update({
-        where: { id: credit.id },
-        data: { solde: credit.solde - dureeSupp.secondes }
-      })
+      // Débiter la bonne source
+      if (creditSource.type === 'bonus') {
+        await tx.bonus.update({
+          where: { id: creditSource.data.id },
+          data: { solde: creditSource.data.solde - dureeSupp.secondes }
+        })
+      } else {
+        await tx.credit.update({
+          where: { id: creditSource.data.id },
+          data: { solde: creditSource.data.solde - dureeSupp.secondes }
+        })
+      }
       // Mettre à jour la fin de session
       await tx.session.update({
         where: { id: sessionId },

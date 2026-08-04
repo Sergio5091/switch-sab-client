@@ -5,7 +5,7 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Play, User, Tag, Clock, Monitor, DollarSign, History, Search, AlertCircle } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
-import { useLocation } from "wouter";
+import { useLocation, useSearch } from "wouter";
 import { Badge } from "@/components/ui/badge";
 import { format } from "date-fns";
 import { fr } from "date-fns/locale";
@@ -34,6 +34,10 @@ function formatTime(secs: number): string {
 export default function GerantSessionNew() {
   const { toast } = useToast();
   const [, setLocation] = useLocation();
+  const search = useSearch();
+
+  // Lire le posteId pré-sélectionné depuis l'URL (?posteId=X)
+  const preselectedPosteId = new URLSearchParams(search).get("posteId") ?? "";
 
   const [clients, setClients] = useState<Client[]>([]);
   const [categories, setCategories] = useState<Categorie[]>([]);
@@ -41,7 +45,7 @@ export default function GerantSessionNew() {
   const [durees, setDurees] = useState<Duree[]>([]);
   const [sessions, setSessions] = useState<Session[]>([]);
 
-  const [search, setSearch] = useState("");
+  const [searchQ, setSearchQ] = useState("");
   const [clientId, setClientId] = useState("");
   const [categorieId, setCategorieId] = useState("");
   const [dureeId, setDureeId] = useState("");
@@ -59,8 +63,17 @@ export default function GerantSessionNew() {
       setCategories(cat);
       setPostes(p);
       setSessions(s);
+
+      // Pré-sélectionner le poste depuis l'URL et déduire la catégorie
+      if (preselectedPosteId) {
+        const poste = p.find(pp => pp.id === Number(preselectedPosteId));
+        if (poste && poste.statut === 'LIBRE') {
+          setPosteId(String(poste.id));
+          setCategorieId(String(poste.categorieId));
+        }
+      }
     });
-  }, []);
+  }, [preselectedPosteId]);
 
   useEffect(() => {
     if (!categorieId) { setDurees([]); setDureeId(""); setPosteId(""); return; }
@@ -69,12 +82,12 @@ export default function GerantSessionNew() {
   }, [categorieId]);
 
   const clientsFiltres = useMemo(() => {
-    if (!search.trim()) return clients.filter(c => c.active);
-    const q = search.toLowerCase();
+    if (!searchQ.trim()) return clients.filter(c => c.active);
+    const q = searchQ.toLowerCase();
     return clients.filter(c => c.active && (
       c.pseudo.toLowerCase().includes(q) || c.telephone?.includes(q)
     ));
-  }, [clients, search]);
+  }, [clients, searchQ]);
 
   const selectedClient = clients.find(c => c.id === Number(clientId));
   const selectedDuree = durees.find(d => d.id === Number(dureeId));
@@ -125,13 +138,13 @@ export default function GerantSessionNew() {
             <div className="relative">
               <Search size={14} className="absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground" />
               <Input
-                value={search}
-                onChange={e => { setSearch(e.target.value); setClientId(""); }}
+                value={searchQ}
+                onChange={e => { setSearchQ(e.target.value); setClientId(""); }}
                 placeholder="Taper le pseudo ou téléphone..."
                 className="pl-9"
               />
             </div>
-            {search.trim() && !clientId && (
+            {searchQ.trim() && !clientId && (
               <div className="border border-border rounded-xl overflow-hidden max-h-40 overflow-y-auto">
                 {clientsFiltres.length === 0 ? (
                   <div className="px-4 py-3 text-xs text-muted-foreground text-center">Aucun client trouvé</div>

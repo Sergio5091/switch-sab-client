@@ -41,6 +41,7 @@ export default function AdminPostes() {
   const [switchType, setSwitchType] = useState<string>('MOCK');
   // Map posteId → état child_lock (null = pas encore chargé, true = LOCK, false = UNLOCK)
   const [lockStates, setLockStates] = useState<Record<number, boolean | null>>({});
+  const [isLoading, setIsLoading] = useState(true);
 
   // ── USB ──────────────────────────────────────────────────────────────────
   // Map posteId → valeur du champ "numéro de relais" en cours d'édition

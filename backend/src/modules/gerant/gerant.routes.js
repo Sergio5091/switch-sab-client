@@ -10,6 +10,7 @@ import { listerPostesGerant } from '../admin/postes.controller.js'
 import { listerDurees } from '../admin/durees.controller.js'
 import { genererCoupons, listerCoupons } from '../admin/coupons.controller.js'
 import { appairerPrise } from '../admin/zigbee.controller.js'
+import { detecter as usbDetecter, configurer as usbConfigurer } from '../admin/usb.controller.js'
 
 const router = Router()
 
@@ -44,6 +45,10 @@ router.get('/postes',                  listerPostesGerant)
 // Le garde-fou dans appairerPrise vérifie que req.user.role === 'GERANT'
 // ne peut réappairer qu'un poste ayant déjà un zigbeeName.
 router.post('/zigbee/appairer/:posteId', appairerPrise)
+
+// ─── USB — reconfiguration port (switch débranché / changé de port) ───────
+router.get ('/usb/detecter',   usbDetecter)
+router.post('/usb/configurer', usbConfigurer)
 
 // ─── COUPONS (génération + lecture seule, pas de modif/suppression) ───────
 router.post('/coupons/generer',  genererCoupons)

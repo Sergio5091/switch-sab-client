@@ -115,10 +115,34 @@ export const supprimerPoste = async (req, res) => {
       return res.status(404).json({ message: 'Poste introuvable' })
     }
 
+    // §33 — Vérifier l'absence de sessions (actives ou historiques) avant suppression
+    const sessionCount = await prisma.session.count({ where: { posteId: id } })
+    if (sessionCount > 0) {
+      return res.status(409).json({
+        message: `Impossible de supprimer ce poste : il possède ${sessionCount} session(s) enregistrée(s). Renommez-le ou désactivez-le plutôt que de le supprimer.`
+      })
+    }
+
+    // Vérifier aussi session active
+    const sessionActive = await prisma.session.findFirst({
+      where: { posteId: id, statut: 'ACTIVE' }
+    })
+    if (sessionActive) {
+      return res.status(409).json({
+        message: 'Impossible de supprimer ce poste : une session est actuellement active dessus.'
+      })
+    }
+
     await prisma.poste.delete({ where: { id } })
     return res.json({ message: 'Poste supprimé' })
   } catch (err) {
     console.error('[admin/postes DELETE]', err)
+    // Filet de sécurité pour FK constraint Prisma
+    if (err.code === 'P2003' || err.code === 'P2014') {
+      return res.status(409).json({
+        message: 'Ce poste est référencé par des sessions et ne peut pas être supprimé.'
+      })
+    }
     return res.status(500).json({ message: 'Erreur serveur' })
   }
 }

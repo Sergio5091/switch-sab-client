@@ -158,12 +158,9 @@ const schema = z.object({
   ville:        z.string().min(2, "Ville requise"),
   quartier:     z.string().min(2, "Quartier requis"),
   telephone:    z.string().min(8, "Téléphone requis"),
-  switchType:   z.enum(["WIFI", "USB", "ZIGBEE"]),
+  switchType:   z.enum(["USB", "ZIGBEE"]),
   switchConfig: z.string().optional(),
-}).refine(
-  (data) => data.switchType !== "WIFI" || (!!data.switchConfig && data.switchConfig.trim().length > 0),
-  { message: "L'adresse IP est requise pour le mode WIFI", path: ["switchConfig"] }
-);
+});
 
 type FormValues = z.infer<typeof schema>;
 
@@ -195,7 +192,7 @@ export default function SetupSallePage() {
       ville:        "",
       quartier:     "",
       telephone:    "",
-      switchType:   "WIFI" as const,
+      switchType:   "USB" as const,
       switchConfig: "",
     },
   });
@@ -400,8 +397,8 @@ export default function SetupSallePage() {
                 <FormItem>
                   <FormLabel>Type de switch réseau</FormLabel>
                   <FormControl>
-                    <div className="grid grid-cols-3 gap-2">
-                      {(["WIFI", "USB", "ZIGBEE"] as const).map((type) => (
+                    <div className="grid grid-cols-2 gap-2">
+                      {(["USB", "ZIGBEE"] as const).map((type) => (
                         <button key={type} type="button" onClick={() => field.onChange(type)}
                           className={`flex items-center gap-2 p-3 rounded-xl border text-sm font-medium transition-all ${
                             field.value === type
@@ -421,25 +418,6 @@ export default function SetupSallePage() {
                   <FormMessage />
                 </FormItem>
               )} />
-
-              {/* ── Zone WIFI : champ IP ── */}
-              {switchType === "WIFI" && (
-                <FormField control={form.control} name="switchConfig" render={({ field }) => (
-                  <FormItem>
-                    <FormLabel>
-                      Adresse IP du switch
-                      <span className="text-destructive ml-1 text-xs">*</span>
-                    </FormLabel>
-                    <FormControl>
-                      <Input {...field} placeholder="192.168.1.100" className="h-11" />
-                    </FormControl>
-                    <p className="text-xs text-muted-foreground">
-                      Adresse IP locale du switch sur le réseau de la salle
-                    </p>
-                    <FormMessage />
-                  </FormItem>
-                )} />
-              )}
 
               {/* ── Zone USB : modèle + détection ── */}
               {switchType === "USB" && (
